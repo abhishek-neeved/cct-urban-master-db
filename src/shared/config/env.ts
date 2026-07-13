@@ -9,7 +9,7 @@ import {
   NODE_ENVS,
 } from '@config/constants';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const envSchema = z
   .object({
