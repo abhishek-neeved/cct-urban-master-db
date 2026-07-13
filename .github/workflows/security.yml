@@ -17,6 +17,9 @@ jobs:
   codeql:
     name: CodeQL
     runs-on: ubuntu-latest
+    # Requires GitHub Advanced Security (code scanning). Left non-blocking so the
+    # job runs for real once GHAS is enabled but does not fail PRs until then.
+    continue-on-error: true
     permissions:
       security-events: write
       actions: read
@@ -36,8 +39,10 @@ jobs:
   dependency-review:
     name: Dependency review
     # Compares the PR's dependency changes against advisories; PR-only.
+    # Requires GHAS + Dependency graph. Non-blocking until those are enabled.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: write
