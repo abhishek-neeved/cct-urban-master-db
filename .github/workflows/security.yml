@@ -2,8 +2,9 @@ name: Security
 
 on:
   push:
-    branches: [main, master]
+    branches: [uat, main]
   pull_request:
+    branches: [uat, main]
   schedule:
     # Weekly, Monday 06:00 UTC — catches newly disclosed CVEs in pinned deps.
     - cron: '0 6 * * 1'
