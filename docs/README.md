@@ -1,6 +1,7 @@
 # Documentation
 
-Documentation for the **Express + TypeScript — Layered Architecture** service.
+Documentation for the **CDMA Master DB** service — an Express + TypeScript REST
+API built with a layered (MVC + Service + Repository) architecture.
 
 | Doc                                     | What it covers                                       |
 | --------------------------------------- | ---------------------------------------------------- |

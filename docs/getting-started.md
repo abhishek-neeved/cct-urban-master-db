@@ -44,7 +44,7 @@ Then edit `.env` as needed. Defaults are sensible for local development:
 NODE_ENV=development
 PORT=3000
 LOG_LEVEL=info
-MONGO_URI=mongodb://127.0.0.1:27017/express_ts_layered
+MONGO_URI=mongodb://127.0.0.1:27017/cdma_master_db
 ```
 
 The full list of variables and their validation rules lives in

@@ -1,6 +1,6 @@
-# Express + TypeScript — Layered Architecture
+# CDMA Master DB
 
-A production-ready starter built with **Express** and **TypeScript** using an
+A production-ready **Express + TypeScript** REST API built with an
 **MVC + Service + Repository** layered architecture.
 
 > 📚 **Docs:** [Getting Started](./docs/getting-started.md) ·
@@ -47,6 +47,7 @@ src/
 ├── shared/                   cross-cutting code used by every module
 │   ├── config/               env validation + MongoDB connection
 │   ├── middleware/           request-id, request-logger, validate, error-handler
+│   ├── repositories/         BaseRepository<Attrs, Domain, CreateInput> (generic CRUD)
 │   ├── utils/                logger, errors, request-context, password/token utils
 │   ├── models/               API response shapes (success/failure envelopes)
 │   ├── services/             cross-cutting services (e.g. email)
@@ -64,7 +65,7 @@ responsibilities — the folders just co-locate one feature's layers.
 
 ```bash
 pnpm install          # also sets up Husky via the "prepare" script
-cp .env.example .env  # set MONGO_URI (defaults to mongodb://127.0.0.1:27017/express_ts_layered)
+cp .env.example .env  # set MONGO_URI (defaults to mongodb://127.0.0.1:27017/cdma_master_db)
 pnpm dev          # start with hot reload
 ```
 

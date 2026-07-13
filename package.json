@@ -1,7 +1,7 @@
 {
-  "name": "express-ts-layered",
+  "name": "cdma-master-db",
   "version": "1.0.0",
-  "description": "Express + TypeScript API using MVC + Service + Repository layered architecture",
+  "description": "CDMA Master DB — Express + TypeScript REST API using an MVC + Service + Repository layered architecture",
   "main": "dist/server.js",
   "type": "module",
   "engines": {
