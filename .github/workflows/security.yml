@@ -2,8 +2,9 @@ name: Security
 
 on:
   push:
-    branches: [main, master]
+    branches: [uat, main]
   pull_request:
+    branches: [uat, main]
   schedule:
     # Weekly, Monday 06:00 UTC — catches newly disclosed CVEs in pinned deps.
     - cron: '0 6 * * 1'
@@ -13,57 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  codeql:
-    name: CodeQL
-    runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-
-      - name: Analyze
-        uses: github/codeql-action/analyze@v3
-
-  dependency-review:
-    name: Dependency review
-    # Compares the PR's dependency changes against advisories; PR-only.
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-          comment-summary-in-pr: on-failure
-
   audit:
     name: pnpm audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Audit (fail on high+)
         run: pnpm audit --audit-level=high
