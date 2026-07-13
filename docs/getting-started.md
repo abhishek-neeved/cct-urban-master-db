@@ -47,8 +47,9 @@ LOG_LEVEL=info
 MONGO_URI=mongodb://127.0.0.1:27017/cdma_master_db
 ```
 
-The full list of variables and their validation rules lives in
-[`src/shared/config/env.ts`](../src/shared/config/env.ts).
+The full list of variables, defaults, and validation rules is documented in
+[Configuration](./configuration.md) (source of truth:
+[`src/shared/config/env.ts`](../src/shared/config/env.ts)).
 
 ## 3. Start MongoDB
 

@@ -26,6 +26,7 @@
     "test:watch": "vitest --project unit",
     "test:coverage": "vitest run --coverage",
     "knip": "knip",
+    "spell": "cspell lint --no-progress --no-must-find-files \"**/*.{ts,md}\"",
     "prepare": "husky"
   },
   "dependencies": {
@@ -54,6 +55,7 @@
     "@types/swagger-jsdoc": "6.0.4",
     "@types/swagger-ui-express": "4.1.8",
     "@vitest/coverage-v8": "4.1.10",
+    "cspell": "10.0.1",
     "eslint": "10.7.0",
     "eslint-config-prettier": "10.1.8",
     "husky": "9.1.7",

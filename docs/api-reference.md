@@ -30,7 +30,9 @@ includes an `X-Request-Id` header for tracing.
 | 404  | Route not found                                     |
 | 409  | Conflict (email already registered)                 |
 | 422  | Validation failed (bad body/query)                  |
+| 429  | Too many requests (credential endpoint rate limit)  |
 | 500  | Internal server error                               |
+| 503  | Service not ready (readiness probe: DB unavailable) |
 
 ---
 
@@ -38,7 +40,18 @@ includes an `X-Request-Id` header for tracing.
 
 ### `GET /api/health`
 
+Liveness probe — is the process up? Never touches external services.
+
 **200** → `{ "status": "ok", "uptime": 12.34 }`
+
+### `GET /api/health/ready`
+
+Readiness probe — can the service actually serve traffic (i.e. is MongoDB
+connected)? Suitable for a container/orchestrator health check.
+
+**200** → `{ "status": "ready", "db": "up" }`
+
+**503** → error envelope `{ "success": false, "error": { "message": "Service not ready: database unavailable" }, "requestId": "…" }`
 
 ---
 
@@ -46,6 +59,11 @@ includes an `X-Request-Id` header for tracing.
 
 The auth flow uses a short-lived **access token** (JWT) plus a rotating,
 long-lived **refresh token** (opaque; only its hash is stored server-side).
+
+> **Rate limiting:** the credential endpoints (`register`, `login`,
+> `forgot-password`, `reset-password`) are limited to **10 requests per 15
+> minutes** per client to blunt brute-force and enumeration. Exceeding the limit
+> returns **429**. The limiter is disabled under `NODE_ENV=test`.
 
 ### `POST /api/auth/register`
 
@@ -149,6 +167,29 @@ and **all** of the user's refresh tokens are revoked (forcing re-login).
 **200** → `{ "message": "Password has been reset" }`
 
 **Errors:** `400` invalid or expired token · `422` invalid body
+
+### `GET /api/auth/me`
+
+Return the authenticated user. **Protected** — send the access token as a Bearer
+token in the `Authorization` header.
+
+**Headers:** `Authorization: Bearer <accessToken>`
+
+**200**
+```json
+{
+  "success": true,
+  "data": { "user": { "id": "…", "name": "Ada", "email": "ada@example.com", "createdAt": "…", "updatedAt": "…" } },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid Authorization header or expired access token
+
+```bash
+curl http://localhost:3000/api/auth/me \
+  -H "Authorization: Bearer <accessToken>"
+```
 
 ---
 

@@ -45,6 +45,14 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm knip
 
+  spell:
+    name: Spell check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm spell
+
   build:
     name: Build
     runs-on: ubuntu-latest

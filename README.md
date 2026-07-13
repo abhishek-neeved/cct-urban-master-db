@@ -119,7 +119,9 @@ See the [API Reference](./docs/api-reference.md) for full request/response shape
 | Doc                                          | Covers                                           |
 | -------------------------------------------- | ------------------------------------------------ |
 | [Getting Started](./docs/getting-started.md) | Prerequisites, install, environment, running     |
+| [Configuration](./docs/configuration.md)     | Environment variables, defaults, production rules |
 | [API Reference](./docs/api-reference.md)     | Endpoints, request/response shapes, status codes |
+| [Deployment](./docs/deployment.md)           | Docker build/run, health checks, prod checklist  |
 
 Architecture and conventions live in [`CLAUDE.md`](./CLAUDE.md); the rest is
 documented inline in the (small, commented) source.
