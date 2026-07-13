@@ -18,10 +18,17 @@ export const validate =
   (req: Request, _res: Response, next: NextFunction): void => {
     try {
       if (schemas.params) {
-        req.params = schemas.params.parse(req.params);
+        req.params = schemas.params.parse(req.params) as typeof req.params;
       }
       if (schemas.query) {
-        req.query = schemas.query.parse(req.query);
+        // Express 5 exposes `req.query` as a getter-only property, so it can't be
+        // reassigned; redefine it as an own property with the parsed value instead.
+        Object.defineProperty(req, 'query', {
+          value: schemas.query.parse(req.query),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
       }
       if (schemas.body) {
         req.body = schemas.body.parse(req.body);

@@ -1,4 +1,4 @@
-import { FilterQuery, HydratedDocument, Model, Types, UpdateQuery } from 'mongoose';
+import { HydratedDocument, Model, QueryFilter, Types, UpdateQuery } from 'mongoose';
 import { ConflictError } from '@utils/errors';
 
 /** Mongo signals a unique-index violation with error code 11000. */
@@ -37,13 +37,13 @@ export abstract class BaseRepository<TAttrs, TDomain, TCreate = TAttrs> {
   }
 
   /** Find the first document matching `filter`, or `null`. */
-  async findOne(filter: FilterQuery<TAttrs>): Promise<TDomain | null> {
+  async findOne(filter: QueryFilter<TAttrs>): Promise<TDomain | null> {
     const doc = await this.model.findOne(filter).exec();
     return doc ? this.toDomain(doc) : null;
   }
 
   /** Find all documents matching `filter` (defaults to every document). */
-  async find(filter: FilterQuery<TAttrs> = {}): Promise<TDomain[]> {
+  async find(filter: QueryFilter<TAttrs> = {}): Promise<TDomain[]> {
     const docs = await this.model.find(filter).exec();
     return docs.map((doc) => this.toDomain(doc));
   }
@@ -51,7 +51,10 @@ export abstract class BaseRepository<TAttrs, TDomain, TCreate = TAttrs> {
   /** Persist a new document, mapping a unique-index violation to a `ConflictError`. */
   async create(input: TCreate): Promise<TDomain> {
     try {
-      const doc = await this.model.create(input);
+      // Mongoose 9 tightened `create()`'s parameter typing; the generic
+      // `TCreate` is structurally compatible but not provably so, so cast to the
+      // model's partial-attrs shape.
+      const doc = await this.model.create(input as Partial<TAttrs>);
       return this.toDomain(doc);
     } catch (err) {
       // A concurrent insert can slip past a service-level pre-check; the unique
@@ -69,7 +72,7 @@ export abstract class BaseRepository<TAttrs, TDomain, TCreate = TAttrs> {
   /** Update a document by id and return the updated domain object (or `null`). */
   async updateById(id: string, update: UpdateQuery<TAttrs>): Promise<TDomain | null> {
     if (!Types.ObjectId.isValid(id)) return null;
-    const doc = await this.model.findByIdAndUpdate(id, update, { new: true }).exec();
+    const doc = await this.model.findByIdAndUpdate(id, update, { returnDocument: 'after' }).exec();
     return doc ? this.toDomain(doc) : null;
   }
 
@@ -81,12 +84,12 @@ export abstract class BaseRepository<TAttrs, TDomain, TCreate = TAttrs> {
   }
 
   /** Count documents matching `filter` (defaults to every document). */
-  async count(filter: FilterQuery<TAttrs> = {}): Promise<number> {
+  async count(filter: QueryFilter<TAttrs> = {}): Promise<number> {
     return this.model.countDocuments(filter).exec();
   }
 
   /** Whether any document matches `filter`. */
-  async existsBy(filter: FilterQuery<TAttrs>): Promise<boolean> {
+  async existsBy(filter: QueryFilter<TAttrs>): Promise<boolean> {
     const doc = await this.model.exists(filter).exec();
     return doc !== null;
   }

@@ -20,16 +20,15 @@
     "declaration": true,
     "sourceMap": true,
     "moduleResolution": "bundler",
-    "baseUrl": "./src",
     "paths": {
-      "@/*": ["*"],
-      "@modules/*": ["modules/*"],
-      "@shared/*": ["shared/*"],
-      "@config/*": ["shared/config/*"],
-      "@models/*": ["shared/models/*"],
-      "@utils/*": ["shared/utils/*"],
-      "@middleware/*": ["shared/middleware/*"],
-      "@routes/*": ["routes/*"]
+      "@/*": ["./src/*"],
+      "@modules/*": ["./src/modules/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@config/*": ["./src/shared/config/*"],
+      "@models/*": ["./src/shared/models/*"],
+      "@utils/*": ["./src/shared/utils/*"],
+      "@middleware/*": ["./src/shared/middleware/*"],
+      "@routes/*": ["./src/routes/*"]
     }
   },
   "include": ["src/**/*.ts"],

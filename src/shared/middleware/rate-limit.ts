@@ -22,7 +22,7 @@ export const rateLimitExceededHandler = (req: Request, res: Response): void => {
  */
 export const authLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10,
+  limit: 10, // express-rate-limit v8 renamed `max` to `limit`
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => isTest,
