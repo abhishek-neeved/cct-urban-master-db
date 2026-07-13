@@ -11,39 +11,52 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Each check is its own job so they all run in parallel.
 jobs:
-  quality:
-    name: Checks
+  format:
+    name: Format check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm format:check
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
+  type-check:
+    name: Type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm type-check
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+  knip:
+    name: Unused code / deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm knip
 
-      - name: Format check
-        run: pnpm format:check
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm build
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Type-check
-        run: pnpm type-check
-
-      - name: Unused code / deps (knip)
-        run: pnpm knip
-
-      - name: Build
-        run: pnpm build
-
-      - name: Test (unit + integration + e2e) with 100% coverage gate
-        run: pnpm test:coverage
+  test:
+    name: Test (unit + integration + e2e) with 100% coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: pnpm test:coverage
