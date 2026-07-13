@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.git
+.github
+.husky
+.vscode
+.claude
+docs
+tests
+*.log
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore
+README.md

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Coverage
+coverage/
+
+# Editor / OS
+.DS_Store
+.idea/
+*.swp
+
+# Test artifacts
+.jest-cache/
+
+# Claude Code — commit shared config (settings.json, commands, hooks),
+# keep personal overrides local
+.claude/settings.local.json
+
+graphify-out

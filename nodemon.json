@@ -1,0 +1,5 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "exec": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json && node dist/server.js"
+}

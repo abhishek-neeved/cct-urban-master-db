@@ -1,0 +1,53 @@
+---
+description: Scaffold a complete new resource module (model, repo, service, validator, controller, routes, tests) following the feature-modular layered architecture
+argument-hint: <ResourceName> [field:type ...]  e.g. Product name:string price:number
+---
+
+Scaffold a new CRUD resource module named **$1** following this project's
+feature-first layered architecture. Every file for the resource lives together in
+`src/modules/<resource>/`. Use the existing **auth** module
+(`src/modules/auth/`) as the reference for the full vertical slice — structure,
+naming, and conventions.
+
+Fields (optional, after the name): $ARGUMENTS
+
+Create the full vertical slice under `src/modules/<resource>/`, wired end to end.
+Within the module, import siblings with **relative paths** (`./<resource>.service`);
+use aliases (`@shared/*`, `@utils/*`, `@middleware/*`, `@models/*`) only for
+shared, cross-cutting code.
+
+1. **Model** — `src/modules/<resource>/<resource>.model.ts`
+   - Domain interface, `Create<Resource>Input` / `Update<Resource>Input` types
+   - Mongoose schema (with `timestamps: true`) + exported model
+   - `to<Resource>()` mapper (document → domain type; `_id` → `id`)
+2. **Repository** — `src/modules/<resource>/<resource>.repository.ts`
+   - An `I<Resource>Repository` interface + a class extending
+     `BaseRepository<Attrs, Domain, CreateInput>` (from `@shared/repositories/base.repository`),
+     whose constructor calls `super(<Resource>Model, to<Resource>, { duplicateKeyMessage })`
+   - Inherit the generic CRUD (`findById`, `findOne`, `find`, `create`,
+     `updateById`, `deleteById`, `count`, `existsBy`); add only resource-specific
+     queries. The base already guards ObjectIds and maps duplicate-key → `ConflictError`.
+3. **Service** — `src/modules/<resource>/<resource>.service.ts`
+   - Constructor-injected repository, business rules, typed errors from `@utils/errors`
+4. **Validator** — `src/modules/<resource>/<resource>.validator.ts`
+   - Zod `create` / `update` / `idParam` schemas (idParam validates a Mongo ObjectId)
+5. **Controller** — `src/modules/<resource>/<resource>.controller.ts`
+   - Thin handlers reading already-validated `req.body`/`req.params`
+   - Wrap each handler in `asyncHandler` (from `@middleware/async-handler`) — no try/catch
+   - Use `StatusCodes` from `http-status-codes` and the `success()` envelope
+6. **Routes** — `src/modules/<resource>/<resource>.routes.ts`
+   - A `create<Resource>Module()` factory that wires repository → service →
+     controller and returns the router (mirror `createAuthModule`)
+   - CRUD routes each guarded by the `validate({...})` middleware
+7. **Wire it up** — in `src/routes/index.ts`, import `create<Resource>Module` from
+   `@modules/<resource>/<resource>.routes` and add one `router.use('/<resources>', create<Resource>Module())` line
+8. **Tests**
+   - `tests/unit/services/<resource>.service.spec.ts` (mocked repository)
+   - `tests/integration/repositories/<resource>.repository.spec.ts` (in-memory Mongo via `tests/helpers/db.ts`)
+   - `tests/e2e/<resource>.e2e.spec.ts` (full CRUD + 422/409/404 cases)
+
+Use relative imports within the module and the shared path aliases
+(`@shared/*`, `@utils/*`, `@middleware/*`, `@models/*`) for cross-cutting code,
+matching the existing code style precisely. After scaffolding, run `pnpm type-check`,
+`pnpm lint`, `pnpm knip`, and `pnpm test:all`, and fix anything that fails. Finally,
+update `docs/api-reference.md` with the new endpoints.

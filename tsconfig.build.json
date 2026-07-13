@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "sourceMap": false
+  },
+  // Under bundler resolution the source is extensionless; resolveFullPaths makes
+  // tsc-alias rewrite BOTH aliases and relative imports to full `.js` paths so
+  // the emitted output is valid native ESM that Node can run directly.
+  "tsc-alias": {
+    "resolveFullPaths": true
+  },
+  "exclude": ["node_modules", "dist", "tests", "**/*.spec.ts", "**/*.test.ts"]
+}
