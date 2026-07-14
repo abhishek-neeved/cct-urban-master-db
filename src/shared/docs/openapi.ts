@@ -17,10 +17,10 @@ const options: swaggerJSDoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Express TS Auth API',
+      title: 'CDMA Master DB API',
       version: '1.0.0',
       description:
-        'JWT auth flow (access + rotating refresh tokens) built on a layered architecture.',
+        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens).',
     },
     servers: [{ url: env.APP_URL }],
     tags: [
@@ -35,67 +35,78 @@ const options: swaggerJSDoc.Options = {
         User: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            name: { type: 'string' },
-            email: { type: 'string', format: 'email' },
-            createdAt: { type: 'string', format: 'date-time' },
-            updatedAt: { type: 'string', format: 'date-time' },
+            id: { type: 'string', example: '507f1f77bcf86cd799439011' },
+            firstName: { type: 'string', example: 'Jane' },
+            lastName: { type: 'string', example: 'Doe' },
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+            createdAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
+            updatedAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
           },
-          required: ['id', 'name', 'email', 'createdAt', 'updatedAt'],
+          required: ['id', 'firstName', 'lastName', 'email', 'createdAt', 'updatedAt'],
         },
         AuthPayload: {
           type: 'object',
           properties: {
             user: { $ref: '#/components/schemas/User' },
-            accessToken: { type: 'string' },
-            refreshToken: { type: 'string' },
+            accessToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+            refreshToken: { type: 'string', example: 'f3a9c1d7e5b8a2f6c4d9e1b7a5f8c2d6' },
           },
           required: ['user', 'accessToken', 'refreshToken'],
         },
         TokenPair: {
           type: 'object',
           properties: {
-            accessToken: { type: 'string' },
-            refreshToken: { type: 'string' },
+            accessToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+            refreshToken: { type: 'string', example: 'f3a9c1d7e5b8a2f6c4d9e1b7a5f8c2d6' },
           },
           required: ['accessToken', 'refreshToken'],
         },
         RegisterRequest: {
           type: 'object',
           properties: {
-            name: { type: 'string', minLength: 1, maxLength: 120 },
-            email: { type: 'string', format: 'email' },
-            password: { type: 'string', minLength: 8, maxLength: 128 },
+            firstName: { type: 'string', minLength: 1, maxLength: 60, example: 'Jane' },
+            lastName: { type: 'string', minLength: 1, maxLength: 60, example: 'Doe' },
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+            password: { type: 'string', minLength: 8, maxLength: 128, example: 'supersecret123' },
           },
-          required: ['name', 'email', 'password'],
+          required: ['firstName', 'lastName', 'email', 'password'],
         },
         LoginRequest: {
           type: 'object',
           properties: {
-            email: { type: 'string', format: 'email' },
-            password: { type: 'string', minLength: 1 },
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+            password: { type: 'string', minLength: 1, example: 'supersecret123' },
           },
           required: ['email', 'password'],
         },
         RefreshTokenRequest: {
           type: 'object',
           properties: {
-            refreshToken: { type: 'string', minLength: 1 },
+            refreshToken: {
+              type: 'string',
+              minLength: 1,
+              example: 'f3a9c1d7e5b8a2f6c4d9e1b7a5f8c2d6',
+            },
           },
           required: ['refreshToken'],
         },
         ForgotPasswordRequest: {
           type: 'object',
           properties: {
-            email: { type: 'string', format: 'email' },
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
           },
           required: ['email'],
         },
         ResetPasswordRequest: {
           type: 'object',
           properties: {
-            token: { type: 'string', minLength: 1 },
-            password: { type: 'string', minLength: 8, maxLength: 128 },
+            token: { type: 'string', minLength: 1, example: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6' },
+            password: {
+              type: 'string',
+              minLength: 8,
+              maxLength: 128,
+              example: 'new-supersecret-456',
+            },
           },
           required: ['token', 'password'],
         },

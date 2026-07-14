@@ -18,8 +18,9 @@ describe('AuthService (production)', () => {
     const users = {
       findByEmail: vi.fn().mockResolvedValue({
         id: '507f1f77bcf86cd799439011',
-        name: 'Ada',
-        email: 'ada@example.com',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        email: 'jane.doe@example.com',
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
@@ -29,7 +30,7 @@ describe('AuthService (production)', () => {
     const email = { sendPasswordResetEmail: vi.fn() } as unknown as Mocked<IEmailService>;
 
     const service = new AuthService(users, refreshTokens, email);
-    const token = await service.forgotPassword('ada@example.com');
+    const token = await service.forgotPassword('jane.doe@example.com');
 
     expect(token).toBeUndefined();
     expect(users.setPasswordResetToken).toHaveBeenCalledTimes(1);

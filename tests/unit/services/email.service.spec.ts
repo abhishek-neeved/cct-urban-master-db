@@ -24,7 +24,7 @@ describe('LoggerEmailService', () => {
 
   it('logs the reset URL at info level outside production (dev convenience)', async () => {
     state.isProduction = false;
-    await service.sendPasswordResetEmail('ada@example.com', 'https://app/reset?token=abc');
+    await service.sendPasswordResetEmail('jane.doe@example.com', 'https://app/reset?token=abc');
 
     expect(loggerMock.info).toHaveBeenCalledTimes(1);
     expect(loggerMock.info.mock.calls[0][0]).toContain('https://app/reset?token=abc');
@@ -33,7 +33,7 @@ describe('LoggerEmailService', () => {
 
   it('never logs the token URL in production, only a warning that no transport is configured', async () => {
     state.isProduction = true;
-    await service.sendPasswordResetEmail('ada@example.com', 'https://app/reset?token=secret');
+    await service.sendPasswordResetEmail('jane.doe@example.com', 'https://app/reset?token=secret');
 
     expect(loggerMock.warn).toHaveBeenCalledTimes(1);
     expect(loggerMock.warn.mock.calls[0][0]).not.toContain('secret');

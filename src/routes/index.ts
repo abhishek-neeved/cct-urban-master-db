@@ -17,23 +17,13 @@ export const createApiRouter = (): Router => {
    * /api/health:
    *   get:
    *     tags: [Health]
-   *     summary: Liveness probe
+   *     summary: Health probe (liveness + readiness combined)
+   *     description: "Returns `ok: 1` when the process is up and MongoDB is reachable, otherwise `ok: -1`."
    *     responses:
-   *       200: { description: Process is up }
+   *       200: { description: Healthy (ok = 1) }
+   *       503: { description: Unhealthy — database unavailable (ok = -1) }
    */
-  router.get('/health', health.live);
-
-  /**
-   * @openapi
-   * /api/health/ready:
-   *   get:
-   *     tags: [Health]
-   *     summary: Readiness probe (checks the database connection)
-   *     responses:
-   *       200: { description: Ready }
-   *       503: { description: Not ready (database unavailable) }
-   */
-  router.get('/health/ready', health.ready);
+  router.get('/health', health.check);
   router.use('/', createDocsModule());
   router.use('/auth', createAuthModule());
 

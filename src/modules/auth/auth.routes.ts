@@ -35,7 +35,7 @@ export const createAuthModule = (): Router => {
    * /api/auth/register:
    *   post:
    *     tags: [Auth]
-   *     summary: Register a new account and receive tokens
+   *     summary: Register a new account (does not log in — no tokens are issued)
    *     requestBody:
    *       required: true
    *       content:
@@ -46,7 +46,10 @@ export const createAuthModule = (): Router => {
    *         description: Created
    *         content:
    *           application/json:
-   *             schema: { $ref: '#/components/schemas/AuthPayload' }
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 user: { $ref: '#/components/schemas/User' }
    *       409: { description: Email already registered }
    *       422: { description: Validation failed }
    *       429: { description: Too many requests }

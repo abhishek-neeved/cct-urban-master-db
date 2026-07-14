@@ -22,6 +22,7 @@ variables in the environment directly.
 | `NODE_ENV`                   | `development` \| `test` \| `production` | `development`                      | Selects behaviour (logging format, dev-only responses, rate-limit skip). |
 | `PORT`                       | positive integer            | `3000`                                         | Port the HTTP server listens on.                                         |
 | `LOG_LEVEL`                  | `error`\|`warn`\|`info`\|`http`\|`debug` | `info`                            | Winston log level.                                                       |
+| `LOG_FORMAT`                 | `json` \| `pretty`          | _(unset)_ → `json` in prod, `pretty` otherwise | Log output format. Set explicitly to override the per-env default.       |
 | `MONGO_URI`                  | non-empty string            | `mongodb://127.0.0.1:27017/cdma_master_db`     | MongoDB connection string. Required at runtime (`dev`/`start`).          |
 | `APP_URL`                    | URL                         | `http://localhost:3000`                        | Base URL used to build links in emails (e.g. the password-reset link) and as the OpenAPI server URL. |
 | `JWT_ACCESS_SECRET`          | non-empty string            | `dev-access-secret-change-me` (dev only)       | Signs access-token JWTs. **In production must be set and ≥ 32 chars** — the dev default is rejected. |
@@ -43,7 +44,12 @@ the boot** if violated:
 
 ## Environment-dependent behaviour
 
-- **Logging** — JSON logs in production, pretty/colourised logs otherwise.
+- **Logging** — JSON logs in production, pretty/colourised logs otherwise; set
+  `LOG_FORMAT=json|pretty` to override. Request logs are structured (method, path,
+  status, duration, response size, client ip, user-agent, referrer, and the
+  authenticated user id when present) and escalate to `warn` when slow (> 1s) or
+  `error` on 5xx. Note request logs are emitted at `http` level, so set
+  `LOG_LEVEL=http` (or `debug`) to see them.
 - **`forgot-password`** — outside production the raw reset token is returned in
   the response (`resetToken`) so the flow can be tested without a mail server;
   in production it is only emailed.

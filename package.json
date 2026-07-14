@@ -1,7 +1,7 @@
 {
   "name": "cdma-master-db",
   "version": "1.0.0",
-  "description": "CDMA Master DB — Express + TypeScript REST API using an MVC + Service + Repository layered architecture",
+  "description": "CDMA Master DB — Express + TypeScript REST API on a feature-modular layered architecture (MVC + Service + Repository) with dependency inversion at the data-access boundary",
   "main": "dist/server.js",
   "type": "module",
   "engines": {
@@ -30,6 +30,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@nvcct/db-entities": "0.1.0",
     "bcryptjs": "3.0.3",
     "cors": "2.8.6",
     "dotenv": "17.4.2",

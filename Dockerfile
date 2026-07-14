@@ -28,8 +28,8 @@ COPY --from=build /app/dist ./dist
 EXPOSE 3000
 USER node
 
-# Container health = readiness probe (DB reachable). Node 24 has global fetch.
+# Container health = combined health probe (process up + DB reachable). Node 24 has global fetch.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://localhost:'+(process.env.PORT||3000)+'/api/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://localhost:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "dist/server.js"]

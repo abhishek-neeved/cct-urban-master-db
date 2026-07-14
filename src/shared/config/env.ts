@@ -4,18 +4,27 @@ import {
   BCRYPT_SALT_ROUNDS,
   DEFAULT_ACCESS_SECRET,
   ENV_DEFAULTS,
+  LOG_FORMATS,
   LOG_LEVELS,
   MIN_PROD_SECRET_LENGTH,
   NODE_ENVS,
 } from '@config/constants';
 
-dotenv.config({ quiet: true });
+// Skip loading .env under Vitest: tests assert the schema defaults and stub the
+// vars they need, so a developer's local .env must not leak into process.env
+// (VITEST is set by the runner regardless of any NODE_ENV stubbing in a spec).
+if (!process.env.VITEST) {
+  dotenv.config({ quiet: true });
+}
 
 const envSchema = z
   .object({
     NODE_ENV: z.enum(NODE_ENVS).default(ENV_DEFAULTS.NODE_ENV),
     PORT: z.coerce.number().int().positive().default(ENV_DEFAULTS.PORT),
     LOG_LEVEL: z.enum(LOG_LEVELS).default(ENV_DEFAULTS.LOG_LEVEL),
+
+    // Log output format. Unset -> JSON in production, pretty elsewhere (see logFormat).
+    LOG_FORMAT: z.enum(LOG_FORMATS).optional(),
     MONGO_URI: z.string().min(1).default(ENV_DEFAULTS.MONGO_URI),
 
     // Base URL used to build links in emails (e.g. the password-reset link).
@@ -80,3 +89,10 @@ export const env = parsed.data;
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+
+/**
+ * Resolved log output format: an explicit LOG_FORMAT wins; otherwise JSON in
+ * production (machine-parseable for log aggregators) and pretty/colourised
+ * output everywhere else (readable in a dev console).
+ */
+export const logFormat = env.LOG_FORMAT ?? (isProduction ? 'json' : 'pretty');

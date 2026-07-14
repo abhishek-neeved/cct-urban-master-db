@@ -30,3 +30,7 @@ export const NODE_ENVS = ['development', 'test', 'production'] as const;
 
 /** Recognised log levels (Winston). */
 export const LOG_LEVELS = ['error', 'warn', 'info', 'http', 'debug'] as const;
+
+/** Recognised log output formats. When unset, JSON is used in production and
+ * pretty/colourised output elsewhere (resolved in env.ts). */
+export const LOG_FORMATS = ['json', 'pretty'] as const;

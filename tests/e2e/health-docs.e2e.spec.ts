@@ -12,16 +12,11 @@ describe('Health & Docs (e2e)', () => {
   });
   afterAll(closeTestDb);
 
-  it('reports liveness', async () => {
+  it('reports healthy (ok: 1) when the database is connected', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe('ok');
-  });
-
-  it('reports readiness when the database is connected', async () => {
-    const res = await request(app).get('/api/health/ready');
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe('ready');
+    expect(res.body.data.ok).toBe(1);
+    expect(res.body.data.db).toBe('up');
   });
 
   it('serves the OpenAPI document with all documented paths', async () => {

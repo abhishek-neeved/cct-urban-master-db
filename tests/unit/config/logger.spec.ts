@@ -60,4 +60,17 @@ describe('logger', () => {
 
     expect(cap.output()).toContain('"message":"prod line"');
   });
+
+  it('LOG_FORMAT overrides the environment default (json in development)', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('LOG_FORMAT', 'json');
+    const { logger } = await import('@utils/logger');
+
+    const cap = attachCapture(logger);
+    logger.info('override line');
+    await flush();
+    cap.detach();
+
+    expect(cap.output()).toContain('"message":"override line"');
+  });
 });

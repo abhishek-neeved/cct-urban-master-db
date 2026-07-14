@@ -1,7 +1,8 @@
 # CDMA Master DB
 
-A production-ready **Express + TypeScript** REST API built with an
-**MVC + Service + Repository** layered architecture.
+A production-ready **Express + TypeScript** REST API built on a **feature-modular,
+layered architecture** (MVC + Service + Repository) with **dependency inversion**
+at the data-access boundary.
 
 > 📚 **Docs:** [Getting Started](./docs/getting-started.md) ·
 > [API Reference](./docs/api-reference.md) · architecture & conventions in

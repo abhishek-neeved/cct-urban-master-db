@@ -22,7 +22,16 @@ export const connectDatabase = async (uri: string = env.MONGO_URI): Promise<void
   // Fail fast at boot instead of hanging on the 30s default; the process exits
   // and the orchestrator (k8s/systemd/docker) restarts it until Mongo is ready.
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10_000 });
-  logger.info('✅ Connected to MongoDB');
+
+  // Log safe connection details only — never the URI, which may embed
+  // credentials. host/port/name are the resolved values from the driver.
+  const { name, host, port } = mongoose.connection;
+  logger.info('✅ Connected to MongoDB', {
+    database: name,
+    host,
+    port,
+    mongooseVersion: mongoose.version,
+  });
 };
 
 export const disconnectDatabase = async (): Promise<void> => {

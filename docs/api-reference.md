@@ -32,7 +32,7 @@ includes an `X-Request-Id` header for tracing.
 | 422  | Validation failed (bad body/query)                  |
 | 429  | Too many requests (credential endpoint rate limit)  |
 | 500  | Internal server error                               |
-| 503  | Service not ready (readiness probe: DB unavailable) |
+| 503  | Service unhealthy (health probe: DB unavailable)    |
 
 ---
 
@@ -40,18 +40,13 @@ includes an `X-Request-Id` header for tracing.
 
 ### `GET /api/health`
 
-Liveness probe — is the process up? Never touches external services.
+Combined liveness + readiness probe. Reports `ok: 1` when the process is up
+**and** MongoDB is reachable, or `ok: -1` when the database is unavailable.
+Suitable for both container/orchestrator liveness and readiness probes.
 
-**200** → `{ "status": "ok", "uptime": 12.34 }`
+**200** → `{ "success": true, "data": { "ok": 1, "db": "up", "uptime": 12.34 }, "requestId": "…" }`
 
-### `GET /api/health/ready`
-
-Readiness probe — can the service actually serve traffic (i.e. is MongoDB
-connected)? Suitable for a container/orchestrator health check.
-
-**200** → `{ "status": "ready", "db": "up" }`
-
-**503** → error envelope `{ "success": false, "error": { "message": "Service not ready: database unavailable" }, "requestId": "…" }`
+**503** → error envelope `{ "success": false, "error": { "message": "Service unhealthy: database unavailable", "details": { "ok": -1, "db": "down" } }, "requestId": "…" }`
 
 ---
 
@@ -67,24 +62,25 @@ long-lived **refresh token** (opaque; only its hash is stored server-side).
 
 ### `POST /api/auth/register`
 
-Create an account and receive tokens.
+Create an account. **Does not log the caller in** — no tokens are issued here;
+the account starts unverified (`isVerified: false`). Call `POST /api/auth/login`
+separately to obtain tokens.
 
 **Body**
 
-| Field      | Rules                          |
-| ---------- | ------------------------------ |
-| `name`     | required, 1–120 chars          |
-| `email`    | required, valid email, unique  |
-| `password` | required, 8–128 chars          |
+| Field       | Rules                          |
+| ----------- | ------------------------------ |
+| `firstName` | required, 1–60 chars           |
+| `lastName`  | required, 1–60 chars           |
+| `email`     | required, valid email, unique  |
+| `password`  | required, 8–128 chars          |
 
 **201**
 ```json
 {
   "success": true,
   "data": {
-    "user": { "id": "…", "name": "Ada", "email": "ada@example.com", "createdAt": "…", "updatedAt": "…" },
-    "accessToken": "<jwt>",
-    "refreshToken": "<opaque>"
+    "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "createdAt": "…", "updatedAt": "…" }
   },
   "requestId": "…"
 }
@@ -95,7 +91,7 @@ Create an account and receive tokens.
 ```bash
 curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"Ada","email":"ada@example.com","password":"supersecret"}'
+  -d '{"firstName":"Jane","lastName":"Doe","email":"jane.doe@example.com","password":"supersecret"}'
 ```
 
 ### `POST /api/auth/login`
@@ -179,7 +175,7 @@ token in the `Authorization` header.
 ```json
 {
   "success": true,
-  "data": { "user": { "id": "…", "name": "Ada", "email": "ada@example.com", "createdAt": "…", "updatedAt": "…" } },
+  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "createdAt": "…", "updatedAt": "…" } },
   "requestId": "…"
 }
 ```

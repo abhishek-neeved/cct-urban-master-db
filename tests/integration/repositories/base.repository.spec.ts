@@ -1,5 +1,6 @@
 import { Schema, model, type HydratedDocument } from 'mongoose';
-import { CreateUserInput, UserModel } from '@modules/auth/user.model';
+import { User as UserModel } from '@nvcct/db-entities';
+import { CreateUserInput } from '@modules/auth/user.types';
 import { UserRepository } from '@modules/auth/user.repository';
 import { BaseRepository } from '@shared/repositories/base.repository';
 import { ConflictError } from '@utils/errors';
@@ -41,8 +42,8 @@ describe('BaseRepository (integration, via UserRepository)', () => {
     repository = new UserRepository();
   });
 
-  const make = (email: string, name = 'User') =>
-    repository.create({ name, email, password: 'hashed-pw' });
+  const make = (email: string, firstName = 'User', lastName = 'Test') =>
+    repository.create({ firstName, lastName, email, password: 'hashed-pw' });
 
   describe('find', () => {
     it('returns every document when no filter is given', async () => {
@@ -52,10 +53,10 @@ describe('BaseRepository (integration, via UserRepository)', () => {
     });
 
     it('returns only documents matching the filter (empty when none match)', async () => {
-      await make('a@example.com', 'Ada');
+      await make('a@example.com', 'Jane');
       const matches = await repository.find({ email: 'a@example.com' });
       expect(matches).toHaveLength(1);
-      expect(matches[0].name).toBe('Ada');
+      expect(matches[0].firstName).toBe('Jane');
       await expect(repository.find({ email: 'nobody@example.com' })).resolves.toEqual([]);
     });
   });
@@ -80,17 +81,17 @@ describe('BaseRepository (integration, via UserRepository)', () => {
   describe('updateById', () => {
     it('updates and returns the new domain object', async () => {
       const user = await make('a@example.com', 'Old Name');
-      const updated = await repository.updateById(user.id, { name: 'New Name' });
-      expect(updated?.name).toBe('New Name');
+      const updated = await repository.updateById(user.id, { firstName: 'New Name' });
+      expect(updated?.firstName).toBe('New Name');
     });
 
     it('returns null for a non-ObjectId id', async () => {
-      await expect(repository.updateById('not-an-id', { name: 'x' })).resolves.toBeNull();
+      await expect(repository.updateById('not-an-id', { firstName: 'x' })).resolves.toBeNull();
     });
 
     it('returns null when the id is well-formed but absent', async () => {
       await expect(
-        repository.updateById('507f1f77bcf86cd799439011', { name: 'x' })
+        repository.updateById('507f1f77bcf86cd799439011', { firstName: 'x' })
       ).resolves.toBeNull();
     });
   });
@@ -127,8 +128,8 @@ describe('BaseRepository (integration, via UserRepository)', () => {
     });
 
     it('rethrows non-duplicate persistence errors untouched', async () => {
-      // Missing the required `name` field triggers a Mongoose ValidationError,
-      // which is NOT a duplicate-key error and must propagate as-is.
+      // Missing the required `firstName`/`lastName` fields triggers a Mongoose
+      // ValidationError, which is NOT a duplicate-key error and must propagate as-is.
       const invalid = {
         email: 'incomplete@example.com',
         password: 'pw',

@@ -45,11 +45,10 @@ docker run -d --name cdma-master-db \
 
 ## Health check
 
-The image declares a `HEALTHCHECK` that polls the **readiness** probe
-(`GET /api/health/ready`), so the container is only reported healthy once
-MongoDB is reachable. Point your orchestrator's liveness probe at
-`GET /api/health` and its readiness probe at `GET /api/health/ready`
-(see the [API Reference](./api-reference.md#health)).
+The image declares a `HEALTHCHECK` that polls the combined health probe
+(`GET /api/health`), so the container is only reported healthy once MongoDB is
+reachable (`ok: 1`). Point both your orchestrator's liveness and readiness
+probes at `GET /api/health` (see the [API Reference](./api-reference.md#health)).
 
 ## Graceful shutdown
 
@@ -67,7 +66,7 @@ rejections are logged rather than crashing the process.
 - [ ] `APP_URL` set to the public API URL (used in reset-password email links)
 - [ ] A real email transport wired in place of the dev `LoggerEmailService`
       (see [`src/shared/services/email.service.ts`](../src/shared/services/email.service.ts))
-- [ ] Reverse proxy / load balancer probes wired to `/api/health` and `/api/health/ready`
+- [ ] Reverse proxy / load balancer probes wired to `/api/health`
 
 ## Building without Docker
 

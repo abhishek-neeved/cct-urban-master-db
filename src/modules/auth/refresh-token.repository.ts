@@ -1,4 +1,4 @@
-import { RefreshTokenModel } from './refresh-token.model';
+import { RefreshToken as RefreshTokenModel } from '@nvcct/db-entities';
 
 export interface IRefreshTokenRepository {
   create(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;

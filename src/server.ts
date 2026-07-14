@@ -9,7 +9,12 @@ const start = async (): Promise<void> => {
 
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {
+    // Link to where the process actually listens, so the URL is always
+    // clickable locally regardless of the public APP_URL (proxy/base URL).
+    const baseUrl = `http://localhost:${env.PORT}`;
     logger.info(`🚀 Server listening on port ${env.PORT} (${env.NODE_ENV})`);
+    logger.info(`📚 Swagger UI:   ${baseUrl}/api/docs`);
+    logger.info(`📄 OpenAPI JSON: ${baseUrl}/api/docs.json`);
   });
 
   const shutdown = (signal: string): void => {

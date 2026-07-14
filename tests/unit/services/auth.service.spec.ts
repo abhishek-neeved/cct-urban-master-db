@@ -5,12 +5,13 @@ import { IRefreshTokenRepository } from '@modules/auth/refresh-token.repository'
 import { IEmailService } from '@shared/services/email.service';
 import { BadRequestError, ConflictError, UnauthorizedError } from '@utils/errors';
 import { hashPassword } from '@utils/password.util';
-import { User, UserWithPassword } from '@modules/auth/user.model';
+import { User, UserWithPassword } from '@modules/auth/user.types';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
   id: '507f1f77bcf86cd799439011',
-  name: 'Ada Lovelace',
-  email: 'ada@example.com',
+  firstName: 'Jane',
+  lastName: 'Doe',
+  email: 'jane.doe@example.com',
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
   ...overrides,
@@ -44,30 +45,35 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('creates a user, hashes the password, and issues tokens', async () => {
+    it('creates a user with a hashed password and does not issue tokens', async () => {
       const user = buildUser();
       users.findByEmail.mockResolvedValue(null);
       users.create.mockResolvedValue(user);
 
       const result = await service.register({
-        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
         password: 'supersecret',
       });
 
-      expect(result.user).toEqual(user);
-      expect(result.tokens.accessToken).toEqual(expect.any(String));
-      expect(result.tokens.refreshToken).toEqual(expect.any(String));
+      expect(result).toEqual(user);
       // Password passed to the repository must be hashed, not plaintext.
       const created = users.create.mock.calls[0][0];
       expect(created.password).not.toBe('supersecret');
-      expect(refreshTokens.create).toHaveBeenCalledTimes(1);
+      // Registering does not log the caller in.
+      expect(refreshTokens.create).not.toHaveBeenCalled();
     });
 
     it('rejects a duplicate email with ConflictError', async () => {
       users.findByEmail.mockResolvedValue(buildUser());
       await expect(
-        service.register({ name: 'X', email: 'ada@example.com', password: 'supersecret' })
+        service.register({
+          firstName: 'X',
+          lastName: 'Y',
+          email: 'jane.doe@example.com',
+          password: 'supersecret',
+        })
       ).rejects.toBeInstanceOf(ConflictError);
       expect(users.create).not.toHaveBeenCalled();
     });
@@ -128,7 +134,7 @@ describe('AuthService', () => {
     it('stores a reset token and sends an email when the user exists', async () => {
       users.findByEmail.mockResolvedValue(buildUser());
 
-      const token = await service.forgotPassword('ada@example.com');
+      const token = await service.forgotPassword('jane.doe@example.com');
 
       expect(users.setPasswordResetToken).toHaveBeenCalledTimes(1);
       expect(email.sendPasswordResetEmail).toHaveBeenCalledTimes(1);

@@ -9,6 +9,11 @@ on:
     # Weekly, Monday 06:00 UTC — catches newly disclosed CVEs in pinned deps.
     - cron: '0 6 * * 1'
 
+# Read-only checkout. GitHub Packages access for @nvcct/* deps comes from the
+# PACKAGES_READ_TOKEN secret (see .github/actions/setup), not this token.
+permissions:
+  contents: read
+
 concurrency:
   group: security-${{ github.ref }}
   cancel-in-progress: true
@@ -20,6 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
+        with:
+          packages-token: ${{ secrets.PACKAGES_READ_TOKEN }}
 
       - name: Audit (fail on high+)
         run: pnpm audit --audit-level=high

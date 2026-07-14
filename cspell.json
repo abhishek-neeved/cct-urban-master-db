@@ -17,6 +17,7 @@
     "extensionless",
     "greppable",
     "healthcheck",
+    "nvcct",
     "unstub",
     "uuidv"
   ],

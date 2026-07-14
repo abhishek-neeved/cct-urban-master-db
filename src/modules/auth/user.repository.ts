@@ -1,12 +1,5 @@
-import {
-  CreateUserInput,
-  User,
-  UserAttrs,
-  UserModel,
-  UserWithPassword,
-  toUser,
-  toUserWithPassword,
-} from './user.model';
+import { IUser, User as UserModel } from '@nvcct/db-entities';
+import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.types';
 import { BaseRepository } from '@shared/repositories/base.repository';
 
 export interface IUserRepository {
@@ -26,7 +19,7 @@ export interface IUserRepository {
  * explicit password-aware lookup below.
  */
 export class UserRepository
-  extends BaseRepository<UserAttrs, User, CreateUserInput>
+  extends BaseRepository<IUser, User, CreateUserInput>
   implements IUserRepository
 {
   constructor() {

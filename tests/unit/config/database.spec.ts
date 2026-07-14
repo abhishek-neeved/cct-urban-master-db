@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => {
   const listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
   const connection = {
     readyState: 0,
+    name: 'db',
+    host: 'example',
+    port: 27017,
     listenerCount: (event: string) => listeners[event]?.length ?? 0,
     on(event: string, cb: (...args: unknown[]) => void) {
       (listeners[event] ??= []).push(cb);
@@ -19,6 +22,7 @@ const mocks = vi.hoisted(() => {
     set: vi.fn(),
     connect: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn().mockResolvedValue(undefined),
+    version: '9.0.0',
     connection,
   };
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -45,7 +49,10 @@ describe('database config', () => {
       'mongodb://example/db',
       expect.objectContaining({ serverSelectionTimeoutMS: 10_000 })
     );
-    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining('Connected to MongoDB'));
+    expect(mocks.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Connected to MongoDB'),
+      expect.objectContaining({ database: 'db', host: 'example', port: 27017 })
+    );
   });
 
   it('registers connection listeners once, even across repeated connects', async () => {

@@ -1,5 +1,5 @@
 import winston from 'winston';
-import { env, isProduction } from '@config/env';
+import { env, logFormat } from '@config/env';
 import { getRequestId } from './request-context';
 
 const { combine, timestamp, printf, colorize, json, errors } = winston.format;
@@ -28,7 +28,7 @@ export const logger = winston.createLogger({
     errors({ stack: true }),
     requestIdFormat(),
     timestamp(),
-    isProduction ? json() : combine(colorize(), devFormat)
+    logFormat === 'json' ? json() : combine(colorize(), devFormat)
   ),
   transports: [new winston.transports.Console()],
   silent: env.NODE_ENV === 'test',

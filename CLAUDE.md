@@ -4,8 +4,9 @@ Project context for Claude Code. Read this before making changes.
 
 ## What this is
 
-An **Express + TypeScript** REST API using an **MVC + Service + Repository**
-layered architecture, with **MongoDB/Mongoose**, JWT auth (access + rotating
+An **Express + TypeScript** REST API on a **feature-modular** **MVC + Service +
+Repository** layered architecture (with **dependency inversion** at the
+data-access boundary), plus **MongoDB/Mongoose**, JWT auth (access + rotating
 refresh tokens), Zod validation, Winston logging, and Vitest tests. The project
 is **native ESM** (`"type": "module"`, `moduleResolution: bundler`). Full docs live
 in [`docs/`](./docs/README.md).

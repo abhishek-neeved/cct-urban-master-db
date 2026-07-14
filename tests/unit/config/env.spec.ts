@@ -22,6 +22,14 @@ describe('env config', () => {
     expect(isTest).toBe(false);
   });
 
+  it('loads a .env file when VITEST is not set (simulates a real process boot)', async () => {
+    // '' is falsy, so `!process.env.VITEST` takes the branch a real (non-test)
+    // process boot would take, exercising the dotenv.config() call.
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('NODE_ENV', 'development');
+    await expect(loadEnv()).resolves.toBeDefined();
+  });
+
   it('throws on an invalid environment (unknown NODE_ENV)', async () => {
     vi.stubEnv('NODE_ENV', 'banana');
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

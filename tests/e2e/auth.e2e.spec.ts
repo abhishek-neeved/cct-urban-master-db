@@ -4,8 +4,9 @@ import { createApp } from '@/app';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
 const credentials = {
-  name: 'Ada Lovelace',
-  email: 'ada@example.com',
+  firstName: 'Jane',
+  lastName: 'Doe',
+  email: 'jane.doe@example.com',
   password: 'supersecret',
 };
 
@@ -20,15 +21,19 @@ describe('Auth API (e2e)', () => {
   afterAll(closeTestDb);
 
   const register = () => request(app).post('/api/auth/register').send(credentials);
+  const login = () =>
+    request(app)
+      .post('/api/auth/login')
+      .send({ email: credentials.email, password: credentials.password });
 
-  it('registers a new user and returns tokens', async () => {
+  it('registers a new user without issuing tokens', async () => {
     const res = await register();
 
     expect(res.status).toBe(201);
     expect(res.body.data.user.email).toBe(credentials.email);
     expect(res.body.data.user).not.toHaveProperty('password');
-    expect(res.body.data.accessToken).toEqual(expect.any(String));
-    expect(res.body.data.refreshToken).toEqual(expect.any(String));
+    expect(res.body.data).not.toHaveProperty('accessToken');
+    expect(res.body.data).not.toHaveProperty('refreshToken');
   });
 
   it('rejects a duplicate registration with 409', async () => {
@@ -45,7 +50,8 @@ describe('Auth API (e2e)', () => {
   });
 
   it('returns the current user from /me with a valid access token, 401 without', async () => {
-    const { body } = await register();
+    await register();
+    const { body } = await login();
     const { accessToken } = body.data;
 
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
@@ -60,9 +66,7 @@ describe('Auth API (e2e)', () => {
   it('logs in with valid credentials and rejects invalid ones', async () => {
     await register();
 
-    const ok = await request(app)
-      .post('/api/auth/login')
-      .send({ email: credentials.email, password: credentials.password });
+    const ok = await login();
     expect(ok.status).toBe(200);
     expect(ok.body.data.accessToken).toEqual(expect.any(String));
 
@@ -73,7 +77,8 @@ describe('Auth API (e2e)', () => {
   });
 
   it('exchanges a refresh token for new tokens and revokes the old one', async () => {
-    const { body } = await register();
+    await register();
+    const { body } = await login();
     const { refreshToken } = body.data;
 
     const refreshed = await request(app).post('/api/auth/refresh').send({ refreshToken });
@@ -86,7 +91,8 @@ describe('Auth API (e2e)', () => {
   });
 
   it('lets only one of two concurrent refreshes with the same token succeed', async () => {
-    const { body } = await register();
+    await register();
+    const { body } = await login();
     const { refreshToken } = body.data;
 
     const [a, b] = await Promise.all([
@@ -100,7 +106,8 @@ describe('Auth API (e2e)', () => {
   });
 
   it('logs out so the refresh token can no longer be used', async () => {
-    const { body } = await register();
+    await register();
+    const { body } = await login();
     const { refreshToken } = body.data;
 
     await request(app).post('/api/auth/logout').send({ refreshToken }).expect(200);

@@ -1,6 +1,15 @@
 name: Setup
 description: Install pnpm, Node (from .nvmrc), and project dependencies
 
+inputs:
+  packages-token:
+    description: >
+      Token with read:packages access to the NVCCT org, used to install
+      @nvcct/* dependencies (e.g. db-entities) from GitHub Packages. The
+      package lives in a different repo, so the workflow's automatic token
+      can't read it — pass a PAT via a repo secret (see PACKAGES_READ_TOKEN).
+    required: true
+
 runs:
   using: composite
   steps:
@@ -12,6 +21,12 @@ runs:
       with:
         node-version-file: .nvmrc
         cache: pnpm
+
+    - name: Configure GitHub Packages auth
+      shell: bash
+      run: echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> ~/.npmrc
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.packages-token }}
 
     - name: Install dependencies
       shell: bash

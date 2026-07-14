@@ -14,37 +14,31 @@ const req = { id: 'req-1' } as Request;
 describe('HealthController', () => {
   const controller = new HealthController();
 
-  it('live() reports the process is up with an uptime', () => {
+  it('check() → 200 with ok: 1 when the database is connected', () => {
+    isDatabaseConnected.mockReturnValue(true);
     const res = mockRes();
-    controller.live(req, res);
+    controller.check(req, res);
     expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         success: true,
-        data: expect.objectContaining({ status: 'ok', uptime: expect.any(Number) }),
+        data: expect.objectContaining({ ok: 1, db: 'up', uptime: expect.any(Number) }),
       })
     );
   });
 
-  it('ready() → 200 when the database is connected', () => {
-    isDatabaseConnected.mockReturnValue(true);
-    const res = mockRes();
-    controller.ready(req, res);
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'ready', db: 'up' }) })
-    );
-  });
-
-  it('ready() → 503 when the database is unavailable', () => {
+  it('check() → 503 with ok: -1 when the database is unavailable', () => {
     isDatabaseConnected.mockReturnValue(false);
     const res = mockRes();
-    controller.ready(req, res);
+    controller.check(req, res);
     expect(res.status).toHaveBeenCalledWith(StatusCodes.SERVICE_UNAVAILABLE);
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         success: false,
-        error: expect.objectContaining({ message: 'Service not ready: database unavailable' }),
+        error: expect.objectContaining({
+          message: 'Service unhealthy: database unavailable',
+          details: expect.objectContaining({ ok: -1, db: 'down' }),
+        }),
       })
     );
   });

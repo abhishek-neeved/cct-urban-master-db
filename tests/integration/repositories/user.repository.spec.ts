@@ -14,7 +14,12 @@ describe('UserRepository (integration)', () => {
   });
 
   const seed = () =>
-    repository.create({ name: 'Ada', email: 'ada@example.com', password: 'hashed-pw' });
+    repository.create({
+      firstName: 'Jane',
+      lastName: 'Doe',
+      email: 'jane.doe@example.com',
+      password: 'hashed-pw',
+    });
 
   it('creates a user and finds it by id (without exposing the password)', async () => {
     const created = await seed();
@@ -25,11 +30,16 @@ describe('UserRepository (integration)', () => {
   });
 
   it('lowercases email and returns the hash only via the password-aware lookup', async () => {
-    await repository.create({ name: 'Ada', email: 'Ada@Example.com', password: 'hashed-pw' });
+    await repository.create({
+      firstName: 'Jane',
+      lastName: 'Doe',
+      email: 'Jane.Doe@Example.com',
+      password: 'hashed-pw',
+    });
 
-    await expect(repository.findByEmail('ada@example.com')).resolves.not.toBeNull();
+    await expect(repository.findByEmail('jane.doe@example.com')).resolves.not.toBeNull();
 
-    const withPassword = await repository.findByEmailWithPassword('ada@example.com');
+    const withPassword = await repository.findByEmailWithPassword('jane.doe@example.com');
     expect(withPassword?.password).toBe('hashed-pw');
   });
 
@@ -61,7 +71,7 @@ describe('UserRepository (integration)', () => {
 
     await repository.updatePassword(user.id, 'new-hashed-pw');
 
-    const withPassword = await repository.findByEmailWithPassword('ada@example.com');
+    const withPassword = await repository.findByEmailWithPassword('jane.doe@example.com');
     expect(withPassword?.password).toBe('new-hashed-pw');
     await expect(repository.findByValidResetToken(tokenHash)).resolves.toBeNull();
   });

@@ -1,5 +1,5 @@
 import { env, isProduction } from '@config/env';
-import { User } from './user.model';
+import { User } from './user.types';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
 import { IEmailService } from '@shared/services/email.service';
@@ -19,7 +19,8 @@ export interface AuthResult {
 }
 
 export interface RegisterInput {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
 }
@@ -44,20 +45,25 @@ export class AuthService {
     private readonly email: IEmailService
   ) {}
 
-  async register(input: RegisterInput): Promise<AuthResult> {
+  /**
+   * Creates the account but does not log the caller in — no tokens are
+   * issued here. The account starts unverified (`isVerified: false`); the
+   * caller must log in separately (e.g. after verifying their email).
+   */
+  async register(input: RegisterInput): Promise<User> {
     const existing = await this.users.findByEmail(input.email);
     if (existing) {
       throw new ConflictError('A user with this email already exists');
     }
     const passwordHash = await hashPassword(input.password);
     const user = await this.users.create({
-      name: input.name,
+      firstName: input.firstName,
+      lastName: input.lastName,
       email: input.email,
       password: passwordHash,
     });
-    const tokens = await this.issueTokens(user.id);
     logger.info('User registered', { userId: user.id });
-    return { user, tokens };
+    return user;
   }
 
   /** Returns the profile of an authenticated user (token already verified). */
@@ -84,7 +90,8 @@ export class AuthService {
     }
     const user: User = {
       id: record.id,
-      name: record.name,
+      firstName: record.firstName,
+      lastName: record.lastName,
       email: record.email,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
