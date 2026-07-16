@@ -8,7 +8,7 @@ import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } fro
 import { hashPassword } from '@utils/password.util';
 import { hashToken } from '@utils/token.util';
 import { OTP_MAX_ATTEMPTS } from '@config/constants';
-import { User, UserWithPassword } from '@modules/auth/user.model';
+import { User, UserWithPassword } from '@modules/auth/user.types';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
   id: '00000000-0000-4000-8000-000000000000',

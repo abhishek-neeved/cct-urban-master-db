@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { usersTable } from '@nvcct/db-entities';
-import { CreateUserInput } from '@modules/auth/user.model';
+import { CreateUserInput } from '@modules/auth/user.types';
 import { UserRepository } from '@modules/auth/user.repository';
 import { BaseRepository } from '@shared/repositories/base.repository';
 import { db } from '@config/database';

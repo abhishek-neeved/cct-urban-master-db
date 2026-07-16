@@ -101,7 +101,7 @@ curl http://localhost:3000/api/health
 ```
 
 ```json
-{ "success": true, "data": { "status": "ok", "uptime": 1.23 }, "requestId": "…" }
+{ "success": true, "data": { "ok": 1, "db": "up", "uptime": 1.23 }, "requestId": "…" }
 ```
 
 Continue to the [API Reference](./api-reference.md) to exercise the auth

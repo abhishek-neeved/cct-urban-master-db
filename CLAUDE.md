@@ -11,9 +11,10 @@ package), JWT auth (access + rotating refresh tokens), Zod validation, Winston
 logging, and Vitest tests. The project is **native ESM** (`"type": "module"`,
 `moduleResolution: bundler`). Full docs live in [`docs/`](./docs/README.md).
 
-The current API surface is the **auth** module (`/api/auth/*`): register, login,
-refresh, logout, forgot-password, verify-forgot-password-token, reset-password.
-See [`docs/api-reference.md`](./docs/api-reference.md).
+The current API surface is the **auth** module (`/api/auth/*`): register,
+verify-otp, resend-otp, login, refresh, logout, forgot-password,
+verify-forgot-password-token, reset-password. See
+[`docs/api-reference.md`](./docs/api-reference.md).
 
 ## Architecture (respect the layering)
 
@@ -48,7 +49,7 @@ Keep each layer's responsibility strict:
 
 ## Folder layout (feature-first)
 
-Everything for a feature lives together under `src/modules/<feature>/` (model,
+Everything for a feature lives together under `src/modules/<feature>/` (types,
 repository, service, validator, controller, routes). Cross-cutting code lives
 under `src/shared/` (`config/`, `middleware/`, `utils/`, `models/`, `services/`,
 `docs/`, `types/`). `src/routes/index.ts` mounts the module routers.
@@ -138,6 +139,8 @@ the same checks plus a security workflow (CodeQL, dependency review, `pnpm audit
   pre-push runs type-check + unit tests.
 - A `PostToolUse` hook auto-formats edited `.ts` files with Prettier
   (`.claude/hooks/format.mjs`), so don't worry about hand-formatting.
-- `@nvcct/db-entities` is currently pinned via a `file:../db-entities` dependency
-  while its Drizzle migration is unpublished — swap for a real published version
-  once it tags/publishes, before merging to a shared branch.
+- `@nvcct/db-entities` is a private GitHub Packages dependency — installing it
+  requires a PAT with `read:packages` in `~/.npmrc` locally, and the
+  `PACKAGES_READ_TOKEN` repo secret in CI (see `.npmrc` and
+  `.github/actions/setup`). Never pin it back to a local `file:../db-entities`
+  path on a shared branch — CI only checks out this repo, not a sibling one.

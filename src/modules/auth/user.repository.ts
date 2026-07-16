@@ -2,7 +2,7 @@ import { and, eq, gt } from 'drizzle-orm';
 import { publicUserColumns, usersTable, type UserRow } from '@nvcct/db-entities';
 import { db } from '@shared/config/database';
 import { BaseRepository } from '@shared/repositories/base.repository';
-import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.model';
+import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.types';
 
 export interface IUserRepository {
   findById(id: string): Promise<User | null>;

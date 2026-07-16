@@ -12,6 +12,7 @@ at the data-access boundary.
 
 - 🏗️ **Layered architecture** — Controller → Service → Repository, wired via dependency injection
 - 🐘 **Supabase Postgres + Drizzle ORM** — data access behind a repository interface; schema owned by [`@nvcct/db-entities`](https://github.com/NVCCT/cdma-db-entities)
+- ✉️ **Email/OTP account verification** — new accounts start unverified; a 6-digit OTP gates login until verified
 - 🛡️ **Validation layer** — Zod schemas enforced by a reusable `validate` middleware before controllers run
 - 📝 **Structured logging** with Winston (JSON in prod, pretty in dev)
 - 🔗 **Request IDs** on every request, propagated through async code via `AsyncLocalStorage`
@@ -42,7 +43,7 @@ cross-cutting code lives under `shared/`.
 ```
 src/
 ├── modules/                  feature slices (each self-wired via createXModule)
-│   ├── auth/                 model, repository, service, validator, controller, routes
+│   ├── auth/                 types, repository, service, validator, controller, routes
 │   ├── health/               liveness/readiness controller
 │   └── docs/                 OpenAPI JSON + Swagger UI routes
 ├── shared/                   cross-cutting code used by every module
@@ -97,9 +98,10 @@ integration and e2e tests spin up an in-memory Postgres via
 
 | Method | Path                                        | Description                                  |
 | ------ | ------------------------------------------- | -------------------------------------------- |
-| GET    | `/api/health`                               | Liveness probe                               |
-| GET    | `/api/health/ready`                         | Readiness probe (checks the DB connection)   |
-| POST   | `/api/auth/register`                        | Register and receive tokens                  |
+| GET    | `/api/health`                               | Combined liveness + readiness probe (checks the DB connection) |
+| POST   | `/api/auth/register`                        | Register an account (unverified; emails a verification OTP) |
+| POST   | `/api/auth/verify-otp`                      | Verify an account with the emailed OTP       |
+| POST   | `/api/auth/resend-otp`                      | Resend a verification OTP                    |
 | POST   | `/api/auth/login`                           | Log in with email + password                 |
 | POST   | `/api/auth/refresh`                         | Exchange a refresh token for a new pair      |
 | POST   | `/api/auth/logout`                          | Revoke a refresh token                       |

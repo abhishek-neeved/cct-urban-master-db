@@ -42,7 +42,7 @@ includes an `X-Request-Id` header for tracing.
 ### `GET /api/health`
 
 Combined liveness + readiness probe. Reports `ok: 1` when the process is up
-**and** MongoDB is reachable, or `ok: -1` when the database is unavailable.
+**and** Postgres is reachable, or `ok: -1` when the database is unavailable.
 Suitable for both container/orchestrator liveness and readiness probes.
 
 **200** → `{ "success": true, "data": { "ok": 1, "db": "up", "uptime": 12.34 }, "requestId": "…" }`
@@ -86,26 +86,67 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 | `email`     | required, valid email, unique  |
 | `password`  | required, 8–128 chars          |
 
-**201** — `otpDevCode` is present only outside production.
+**201** — no tokens are issued; `otpDevCode` is present only outside production.
 ```json
 {
   "success": true,
   "data": {
     "user": { "id": "…", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
-    "accessToken": "<jwt>",
-    "refreshToken": "<opaque>"
+    "otpDevCode": "042317"
   },
   "requestId": "…"
 }
 ```
 
-**Errors:** `422` invalid body · `409` email already registered
+**Errors:** `422` invalid body · `409` email already registered · `429` too many requests
 
 ```bash
 curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"firstName":"Ada","lastName":"Lovelace","email":"ada@example.com","password":"supersecret"}'
 ```
+
+### `POST /api/auth/verify-otp`
+
+Verify an account with the emailed 6-digit OTP. Every failure — wrong code,
+unknown email, already-verified account, or no active OTP — resolves to the
+**same generic 400** so the endpoint reveals nothing about which accounts
+exist (no enumeration). A wrong code counts against the attempt cap
+(`OTP_MAX_ATTEMPTS`); once the cap is hit the code is discarded and the caller
+must request a new one via `resend-otp`.
+
+**Body**
+
+| Field   | Rules                       |
+| ------- | ---------------------------- |
+| `email` | required, valid email        |
+| `otp`   | required, 6-digit code        |
+
+**200** → `{ "success": true, "data": { "verified": true }, "requestId": "…" }`
+
+**Errors:** `400` invalid or expired code · `422` invalid body · `429` too many requests
+
+```bash
+curl -X POST http://localhost:3000/api/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ada@example.com","otp":"042317"}'
+```
+
+### `POST /api/auth/resend-otp`
+
+Re-issue a verification OTP. **Always returns 200**, whether or not the
+account exists or is already verified (no enumeration). A resend within
+`OTP_RESEND_COOLDOWN_SECONDS` of the last one is a silent no-op.
+
+**Body:** `email`
+
+**200** — `otpDevCode` is present only outside production, and only when a new
+code was actually issued (not on a no-op).
+```json
+{ "success": true, "data": { "message": "If the account exists and is unverified, a new code has been sent", "otpDevCode": "042317" }, "requestId": "…" }
+```
+
+**Errors:** `422` invalid body · `429` too many requests
 
 ### `POST /api/auth/login`
 

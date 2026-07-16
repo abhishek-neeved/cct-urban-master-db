@@ -20,12 +20,15 @@ const options: swaggerJSDoc.Options = {
       title: 'CDMA Master DB API',
       version: '1.0.0',
       description:
-        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens).',
+        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens), OTP-based email verification, and password reset.',
     },
     servers: [{ url: env.APP_URL }],
     tags: [
-      { name: 'Auth', description: 'Registration, login, tokens and password reset' },
-      { name: 'Health', description: 'Liveness and readiness probes' },
+      {
+        name: 'Auth',
+        description: 'Registration, email/OTP verification, login, tokens and password reset',
+      },
+      { name: 'Health', description: 'Combined liveness + readiness probe' },
     ],
     components: {
       securitySchemes: {

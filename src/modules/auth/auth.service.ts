@@ -1,6 +1,6 @@
 import { env, isProduction } from '@config/env';
 import { OTP_MAX_ATTEMPTS } from '@config/constants';
-import { User } from './user.model';
+import { User } from './user.types';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
 import { IOtpRepository } from './otp.repository';
