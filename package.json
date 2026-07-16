@@ -30,7 +30,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@nvcct/db-entities": "0.1.0",
+    "@nvcct/db-entities": "0.1.1",
     "bcryptjs": "3.0.3",
     "cors": "2.8.6",
     "dotenv": "17.4.2",

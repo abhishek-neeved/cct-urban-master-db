@@ -2,9 +2,12 @@ import { vi, type Mocked } from 'vitest';
 import { AuthService } from '@modules/auth/auth.service';
 import { IUserRepository } from '@modules/auth/user.repository';
 import { IRefreshTokenRepository } from '@modules/auth/refresh-token.repository';
+import { IOtpRepository, OtpRecord } from '@modules/auth/otp.repository';
 import { IEmailService } from '@shared/services/email.service';
-import { BadRequestError, ConflictError, UnauthorizedError } from '@utils/errors';
+import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } from '@utils/errors';
 import { hashPassword } from '@utils/password.util';
+import { hashToken } from '@utils/token.util';
+import { OTP_MAX_ATTEMPTS } from '@config/constants';
 import { User, UserWithPassword } from '@modules/auth/user.types';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
@@ -12,14 +15,24 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   firstName: 'Jane',
   lastName: 'Doe',
   email: 'jane.doe@example.com',
+  isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
+  ...overrides,
+});
+
+const buildOtp = (code: string, overrides: Partial<OtpRecord> = {}): OtpRecord => ({
+  id: '507f1f77bcf86cd799439099',
+  codeHash: hashToken(code),
+  attempts: 0,
+  createdAt: new Date('2020-01-01'),
   ...overrides,
 });
 
 describe('AuthService', () => {
   let users: Mocked<IUserRepository>;
   let refreshTokens: Mocked<IRefreshTokenRepository>;
+  let otps: Mocked<IOtpRepository>;
   let email: Mocked<IEmailService>;
   let service: AuthService;
 
@@ -32,6 +45,7 @@ describe('AuthService', () => {
       setPasswordResetToken: vi.fn(),
       findByValidResetToken: vi.fn(),
       updatePassword: vi.fn(),
+      markVerified: vi.fn(),
     };
     refreshTokens = {
       create: vi.fn(),
@@ -40,29 +54,45 @@ describe('AuthService', () => {
       deleteByHash: vi.fn(),
       deleteAllForUser: vi.fn(),
     };
-    email = { sendPasswordResetEmail: vi.fn() };
-    service = new AuthService(users, refreshTokens, email);
+    otps = {
+      findActiveForUser: vi.fn(),
+      replaceForUser: vi.fn(),
+      recordFailedAttempt: vi.fn(),
+      deleteForUser: vi.fn(),
+    };
+    email = { sendPasswordResetEmail: vi.fn(), sendOtpEmail: vi.fn() };
+    service = new AuthService(users, refreshTokens, otps, email);
   });
 
   describe('register', () => {
-    it('creates a user with a hashed password and does not issue tokens', async () => {
-      const user = buildUser();
+    it('creates a user with a hashed password, issues an OTP, and does not issue tokens', async () => {
+      const user = buildUser({ isVerified: false });
       users.findByEmail.mockResolvedValue(null);
       users.create.mockResolvedValue(user);
 
       const result = await service.register({
         firstName: user.firstName,
         lastName: user.lastName,
+        firstName: user.firstName,
+        lastName: user.lastName,
         email: user.email,
         password: 'supersecret',
       });
 
-      expect(result).toEqual(user);
+      expect(result.user).toEqual(user);
       // Password passed to the repository must be hashed, not plaintext.
       const created = users.create.mock.calls[0][0];
       expect(created.password).not.toBe('supersecret');
-      // Registering does not log the caller in.
+      // An OTP is issued (hashed) and emailed, but the caller is not logged in.
+      expect(otps.replaceForUser).toHaveBeenCalledTimes(1);
+      expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
       expect(refreshTokens.create).not.toHaveBeenCalled();
+      // Outside production the raw OTP is returned for local testing.
+      expect(result.devOtp).toMatch(/^\d{6}$/);
+      // The stored code is hashed, not the raw OTP that was emailed.
+      const [, storedHash] = otps.replaceForUser.mock.calls[0];
+      expect(storedHash).toBe(hashToken(result.devOtp as string));
+      expect(storedHash).not.toBe(result.devOtp);
     });
 
     it('rejects a duplicate email with ConflictError', async () => {
@@ -76,6 +106,108 @@ describe('AuthService', () => {
         })
       ).rejects.toBeInstanceOf(ConflictError);
       expect(users.create).not.toHaveBeenCalled();
+      expect(otps.replaceForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyOtp', () => {
+    it('marks the account verified and consumes the OTP on a correct code', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+
+      await service.verifyOtp(user.email, '123456');
+
+      expect(users.markVerified).toHaveBeenCalledWith(user.id);
+      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id);
+      expect(otps.recordFailedAttempt).not.toHaveBeenCalled();
+    });
+
+    it('records a failed attempt and rejects a wrong code', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      otps.recordFailedAttempt.mockResolvedValue(1);
+
+      await expect(service.verifyOtp(user.email, '000000')).rejects.toBeInstanceOf(BadRequestError);
+      expect(otps.recordFailedAttempt).toHaveBeenCalledTimes(1);
+      expect(users.markVerified).not.toHaveBeenCalled();
+      // Below the cap the OTP is kept so the user can retry.
+      expect(otps.deleteForUser).not.toHaveBeenCalled();
+    });
+
+    it('burns the OTP once the attempt cap is reached', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      otps.recordFailedAttempt.mockResolvedValue(OTP_MAX_ATTEMPTS);
+
+      await expect(service.verifyOtp(user.email, '000000')).rejects.toBeInstanceOf(BadRequestError);
+      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id);
+    });
+
+    it('rejects generically when there is no active OTP', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(null);
+
+      await expect(service.verifyOtp(user.email, '123456')).rejects.toBeInstanceOf(BadRequestError);
+    });
+
+    it('rejects generically for an unknown email (no enumeration)', async () => {
+      users.findByEmail.mockResolvedValue(null);
+      await expect(service.verifyOtp('nobody@example.com', '123456')).rejects.toBeInstanceOf(
+        BadRequestError
+      );
+      expect(otps.findActiveForUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects generically for an already-verified account', async () => {
+      users.findByEmail.mockResolvedValue(buildUser({ isVerified: true }));
+      await expect(service.verifyOtp('jane.doe@example.com', '123456')).rejects.toBeInstanceOf(
+        BadRequestError
+      );
+      expect(otps.findActiveForUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resendOtp', () => {
+    it('issues and emails a fresh OTP when eligible', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(null);
+
+      const code = await service.resendOtp(user.email);
+
+      expect(otps.replaceForUser).toHaveBeenCalledTimes(1);
+      expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
+      expect(code).toMatch(/^\d{6}$/);
+    });
+
+    it('is a silent no-op within the resend cooldown', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      // An OTP was just issued (createdAt = now), so a resend is throttled.
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456', { createdAt: new Date() }));
+
+      const code = await service.resendOtp(user.email);
+
+      expect(code).toBeUndefined();
+      expect(otps.replaceForUser).not.toHaveBeenCalled();
+      expect(email.sendOtpEmail).not.toHaveBeenCalled();
+    });
+
+    it('does nothing and reveals nothing for an unknown email', async () => {
+      users.findByEmail.mockResolvedValue(null);
+      await expect(service.resendOtp('nobody@example.com')).resolves.toBeUndefined();
+      expect(otps.replaceForUser).not.toHaveBeenCalled();
+      expect(email.sendOtpEmail).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for an already-verified account', async () => {
+      users.findByEmail.mockResolvedValue(buildUser({ isVerified: true }));
+      await expect(service.resendOtp('jane.doe@example.com')).resolves.toBeUndefined();
+      expect(otps.replaceForUser).not.toHaveBeenCalled();
     });
   });
 
@@ -109,6 +241,15 @@ describe('AuthService', () => {
       await expect(service.login({ email: 'nobody@example.com', password })).rejects.toBeInstanceOf(
         UnauthorizedError
       );
+    });
+
+    it('throws ForbiddenError for a correct password on an unverified account', async () => {
+      users.findByEmailWithPassword.mockResolvedValue({ ...record, isVerified: false });
+      await expect(service.login({ email: record.email, password })).rejects.toBeInstanceOf(
+        ForbiddenError
+      );
+      // No session is issued for an unverified account.
+      expect(refreshTokens.create).not.toHaveBeenCalled();
     });
   });
 

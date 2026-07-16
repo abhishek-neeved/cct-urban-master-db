@@ -39,10 +39,19 @@ const options: swaggerJSDoc.Options = {
             firstName: { type: 'string', example: 'Jane' },
             lastName: { type: 'string', example: 'Doe' },
             email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+            isVerified: { type: 'boolean', example: false },
             createdAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
             updatedAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
           },
-          required: ['id', 'firstName', 'lastName', 'email', 'createdAt', 'updatedAt'],
+          required: [
+            'id',
+            'firstName',
+            'lastName',
+            'email',
+            'isVerified',
+            'createdAt',
+            'updatedAt',
+          ],
         },
         AuthPayload: {
           type: 'object',
@@ -78,6 +87,21 @@ const options: swaggerJSDoc.Options = {
             password: { type: 'string', minLength: 1, example: 'supersecret123' },
           },
           required: ['email', 'password'],
+        },
+        VerifyOtpRequest: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+            otp: { type: 'string', pattern: '^\\d{6}$', example: '042317' },
+          },
+          required: ['email', 'otp'],
+        },
+        ResendOtpRequest: {
+          type: 'object',
+          properties: {
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+          },
+          required: ['email'],
         },
         RefreshTokenRequest: {
           type: 'object',

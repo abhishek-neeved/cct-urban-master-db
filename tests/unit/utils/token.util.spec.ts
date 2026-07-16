@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { env } from '@config/env';
 import {
+  generateNumericOtp,
   generateOpaqueToken,
   hashToken,
   signAccessToken,
@@ -42,6 +43,18 @@ describe('token.util', () => {
       expect(hashToken('abc')).toBe(hashToken('abc'));
       expect(hashToken('abc')).toMatch(/^[0-9a-f]{64}$/);
       expect(hashToken('abc')).not.toBe(hashToken('abd'));
+    });
+  });
+
+  describe('generateNumericOtp', () => {
+    it('generates a zero-padded 6-digit code by default', () => {
+      for (let i = 0; i < 100; i++) {
+        expect(generateNumericOtp()).toMatch(/^\d{6}$/);
+      }
+    });
+
+    it('honours a custom digit length', () => {
+      expect(generateNumericOtp(4)).toMatch(/^\d{4}$/);
     });
   });
 });

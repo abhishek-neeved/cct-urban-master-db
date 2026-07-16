@@ -3,6 +3,7 @@ import { logger } from '@utils/logger';
 
 export interface IEmailService {
   sendPasswordResetEmail(to: string, resetUrl: string): Promise<void>;
+  sendOtpEmail(to: string, code: string): Promise<void>;
 }
 
 /**
@@ -23,5 +24,17 @@ export class LoggerEmailService implements IEmailService {
       return;
     }
     logger.info(`[email:stub] Password reset requested for ${to} → ${resetUrl}`);
+  }
+
+  async sendOtpEmail(to: string, code: string): Promise<void> {
+    // The OTP is a live account-verification secret, so it is NEVER logged in
+    // production (mirrors the reset-email guard above).
+    if (isProduction) {
+      logger.warn(
+        `[email:stub] No email transport configured — verification OTP for ${to} was NOT sent. Configure a real IEmailService.`
+      );
+      return;
+    }
+    logger.info(`[email:stub] Verification OTP for ${to} → ${code}`);
   }
 }

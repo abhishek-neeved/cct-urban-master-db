@@ -30,6 +30,8 @@ variables in the environment directly.
 | `REFRESH_TOKEN_TTL_DAYS`     | positive integer            | `7`                                            | Refresh-token lifetime in days.                                          |
 | `BCRYPT_SALT_ROUNDS`         | integer 10–15               | `12`                                           | bcrypt cost factor for password hashing.                                 |
 | `PASSWORD_RESET_TTL_MINUTES` | positive integer            | `60`                                           | How long a password-reset token stays valid.                            |
+| `OTP_TTL_MINUTES`            | positive integer            | `10`                                           | How long an account-verification OTP stays valid.                        |
+| `OTP_RESEND_COOLDOWN_SECONDS`| positive integer            | `60`                                           | Minimum wait between OTP resends (silent no-op within the window).       |
 | `CORS_ORIGINS`               | comma-separated origins     | _(unset)_                                      | Allowlist of origins. Empty in dev reflects any origin; **required (non-empty) in production**. |
 
 ## Production-only rules

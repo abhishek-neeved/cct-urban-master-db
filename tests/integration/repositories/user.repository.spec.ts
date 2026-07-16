@@ -29,6 +29,16 @@ describe('UserRepository (integration)', () => {
     await expect(repository.findById(created.id)).resolves.toEqual(created);
   });
 
+  it('creates users unverified and can mark them verified', async () => {
+    const created = await seed();
+    expect(created.isVerified).toBe(false);
+
+    await repository.markVerified(created.id);
+
+    const reread = await repository.findById(created.id);
+    expect(reread?.isVerified).toBe(true);
+  });
+
   it('lowercases email and returns the hash only via the password-aware lookup', async () => {
     await repository.create({
       firstName: 'Jane',

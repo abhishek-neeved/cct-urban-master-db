@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { LoggerEmailService } from '@shared/services/email.service';
 import { UserRepository } from './user.repository';
 import { RefreshTokenRepository } from './refresh-token.repository';
+import { OtpRepository } from './otp.repository';
 import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
 import { authLimiter } from '@middleware/rate-limit';
@@ -12,7 +13,9 @@ import {
   loginSchema,
   refreshTokenSchema,
   registerSchema,
+  resendOtpSchema,
   resetPasswordSchema,
+  verifyOtpSchema,
   verifyResetTokenQuerySchema,
 } from './auth.validator';
 
@@ -24,8 +27,9 @@ import {
 export const createAuthModule = (): Router => {
   const users = new UserRepository();
   const refreshTokens = new RefreshTokenRepository();
+  const otps = new OtpRepository();
   const emailService = new LoggerEmailService();
-  const authService = new AuthService(users, refreshTokens, emailService);
+  const authService = new AuthService(users, refreshTokens, otps, emailService);
   const controller = new AuthController(authService);
 
   const router = Router();
@@ -43,7 +47,7 @@ export const createAuthModule = (): Router => {
    *           schema: { $ref: '#/components/schemas/RegisterRequest' }
    *     responses:
    *       201:
-   *         description: Created
+   *         description: Created — a 6-digit verification OTP has been emailed
    *         content:
    *           application/json:
    *             schema:
@@ -75,10 +79,65 @@ export const createAuthModule = (): Router => {
    *           application/json:
    *             schema: { $ref: '#/components/schemas/AuthPayload' }
    *       401: { description: Invalid email or password }
+   *       403: { description: Account not verified }
    *       422: { description: Validation failed }
    *       429: { description: Too many requests }
    */
   router.post('/login', authLimiter, validate({ body: loginSchema }), controller.login);
+
+  /**
+   * @openapi
+   * /api/auth/verify-otp:
+   *   post:
+   *     tags: [Auth]
+   *     summary: Verify an account with the emailed OTP
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/VerifyOtpRequest' }
+   *     responses:
+   *       200:
+   *         description: Account verified
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 verified: { type: boolean, example: true }
+   *       400: { description: Invalid or expired verification code }
+   *       422: { description: Validation failed }
+   *       429: { description: Too many requests }
+   */
+  router.post(
+    '/verify-otp',
+    authLimiter,
+    validate({ body: verifyOtpSchema }),
+    controller.verifyOtp
+  );
+
+  /**
+   * @openapi
+   * /api/auth/resend-otp:
+   *   post:
+   *     tags: [Auth]
+   *     summary: Resend a verification OTP (always 200 — no account enumeration)
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/ResendOtpRequest' }
+   *     responses:
+   *       200: { description: A new code has been sent if the account exists and is unverified }
+   *       422: { description: Validation failed }
+   *       429: { description: Too many requests }
+   */
+  router.post(
+    '/resend-otp',
+    authLimiter,
+    validate({ body: resendOtpSchema }),
+    controller.resendOtp
+  );
 
   /**
    * @openapi

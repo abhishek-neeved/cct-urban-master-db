@@ -50,6 +50,15 @@ const envSchema = z
       .positive()
       .default(ENV_DEFAULTS.PASSWORD_RESET_TTL_MINUTES),
 
+    // How long an account-verification OTP stays valid.
+    OTP_TTL_MINUTES: z.coerce.number().int().positive().default(ENV_DEFAULTS.OTP_TTL_MINUTES),
+    // Minimum wait between OTP resends (blunts email spamming / brute-force setup).
+    OTP_RESEND_COOLDOWN_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(ENV_DEFAULTS.OTP_RESEND_COOLDOWN_SECONDS),
+
     // Comma-separated list of allowed CORS origins (leave empty to allow all in dev).
     CORS_ORIGINS: z.string().optional(),
   })

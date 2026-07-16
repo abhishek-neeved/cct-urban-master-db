@@ -10,6 +10,7 @@ export interface IUserRepository {
   setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
   findByValidResetToken(tokenHash: string): Promise<User | null>;
   updatePassword(userId: string, passwordHash: string): Promise<void>;
+  markVerified(userId: string): Promise<void>;
 }
 
 /**
@@ -62,5 +63,9 @@ export class UserRepository
         $unset: { passwordResetToken: 1, passwordResetExpires: 1 },
       })
       .exec();
+  }
+
+  async markVerified(userId: string): Promise<void> {
+    await this.model.findByIdAndUpdate(userId, { isVerified: true }).exec();
   }
 }

@@ -3,7 +3,7 @@ import type { IUser, UserDocument } from '@nvcct/db-entities';
 /** Domain representation returned to callers — never includes the password. */
 export interface User extends Pick<
   IUser,
-  'firstName' | 'lastName' | 'email' | 'createdAt' | 'updatedAt'
+  'firstName' | 'lastName' | 'email' | 'isVerified' | 'createdAt' | 'updatedAt'
 > {
   id: string;
 }
@@ -19,6 +19,7 @@ export const toUser = (doc: UserDocument): User => ({
   firstName: doc.firstName,
   lastName: doc.lastName,
   email: doc.email,
+  isVerified: doc.isVerified,
   createdAt: doc.createdAt,
   updatedAt: doc.updatedAt,
 });

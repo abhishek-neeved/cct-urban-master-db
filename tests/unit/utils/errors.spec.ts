@@ -3,6 +3,7 @@ import {
   AppError,
   BadRequestError,
   ConflictError,
+  ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
@@ -42,6 +43,13 @@ describe('errors', () => {
 
   it('UnauthorizedError → 401', () => {
     expect(new UnauthorizedError('nope').statusCode).toBe(StatusCodes.UNAUTHORIZED);
+  });
+
+  it('ForbiddenError → 403 with a default message', () => {
+    const err = new ForbiddenError();
+    expect(err.statusCode).toBe(StatusCodes.FORBIDDEN);
+    expect(err.message).toBe('Forbidden');
+    expect(err.name).toBe('ForbiddenError');
   });
 
   it('ConflictError → 409 with a default message', () => {

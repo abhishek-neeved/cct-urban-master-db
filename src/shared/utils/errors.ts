@@ -41,6 +41,12 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message = 'Forbidden') {
+    super(message, StatusCodes.FORBIDDEN);
+  }
+}
+
 export class ValidationError extends AppError {
   public readonly details: unknown;
 

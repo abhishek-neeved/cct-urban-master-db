@@ -14,8 +14,26 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   register: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const user = await this.authService.register(req.body);
-    res.status(StatusCodes.CREATED).json(success({ user }, req.id));
+    const { user, devOtp } = await this.authService.register(req.body);
+    const data: Record<string, unknown> = { user };
+    // Dev-only convenience so the flow can be exercised without a mail server.
+    if (devOtp) data.otpDevCode = devOtp;
+    res.status(StatusCodes.CREATED).json(success(data, req.id));
+  });
+
+  verifyOtp: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    await this.authService.verifyOtp(req.body.email, req.body.otp);
+    res.status(StatusCodes.OK).json(success({ verified: true }, req.id));
+  });
+
+  resendOtp: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const devOtp = await this.authService.resendOtp(req.body.email);
+    const data: Record<string, unknown> = {
+      message: 'If the account exists and is unverified, a new code has been sent',
+    };
+    // Dev-only convenience so the flow can be exercised without a mail server.
+    if (devOtp) data.otpDevCode = devOtp;
+    res.status(StatusCodes.OK).json(success(data, req.id));
   });
 
   login: RequestHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -1,11 +1,18 @@
 import { env, isProduction } from '@config/env';
+import { OTP_MAX_ATTEMPTS } from '@config/constants';
 import { User } from './user.types';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
+import { IOtpRepository } from './otp.repository';
 import { IEmailService } from '@shared/services/email.service';
 import { comparePassword, getDummyPasswordHash, hashPassword } from '@utils/password.util';
-import { generateOpaqueToken, hashToken, signAccessToken } from '@utils/token.util';
-import { BadRequestError, ConflictError, UnauthorizedError } from '@utils/errors';
+import {
+  generateNumericOtp,
+  generateOpaqueToken,
+  hashToken,
+  signAccessToken,
+} from '@utils/token.util';
+import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } from '@utils/errors';
 import { logger } from '@utils/logger';
 
 export interface AuthTokens {
@@ -25,6 +32,12 @@ export interface RegisterInput {
   password: string;
 }
 
+export interface RegisterResult {
+  user: User;
+  /** Raw OTP, returned only in non-production so the flow can be tested locally. */
+  devOtp?: string;
+}
+
 export interface LoginInput {
   email: string;
   password: string;
@@ -32,6 +45,7 @@ export interface LoginInput {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
+const SECOND_MS = 1000;
 
 /**
  * Standard JWT auth flow: register/login issue a short-lived access token plus
@@ -42,15 +56,16 @@ export class AuthService {
   constructor(
     private readonly users: IUserRepository,
     private readonly refreshTokens: IRefreshTokenRepository,
+    private readonly otps: IOtpRepository,
     private readonly email: IEmailService
   ) {}
 
   /**
-   * Creates the account but does not log the caller in — no tokens are
-   * issued here. The account starts unverified (`isVerified: false`); the
-   * caller must log in separately (e.g. after verifying their email).
+   * Creates the account but does not log the caller in — no tokens are issued
+   * here. The account starts unverified (`isVerified: false`); a verification
+   * OTP is emailed, and the caller must verify (and then log in) separately.
    */
-  async register(input: RegisterInput): Promise<User> {
+  async register(input: RegisterInput): Promise<RegisterResult> {
     const existing = await this.users.findByEmail(input.email);
     if (existing) {
       throw new ConflictError('A user with this email already exists');
@@ -62,8 +77,64 @@ export class AuthService {
       email: input.email,
       password: passwordHash,
     });
+    const rawOtp = await this.issueOtp(user.id);
+    await this.email.sendOtpEmail(user.email, rawOtp);
     logger.info('User registered', { userId: user.id });
-    return user;
+    return { user, devOtp: isProduction ? undefined : rawOtp };
+  }
+
+  /**
+   * Verify an account with the emailed OTP. Every failure resolves to the same
+   * generic error so the endpoint reveals nothing about which accounts exist or
+   * are already verified. A wrong code counts against the attempt cap; once the
+   * cap is hit the OTP is discarded and the user must request a new one.
+   */
+  async verifyOtp(email: string, code: string): Promise<void> {
+    const invalid = new BadRequestError('Invalid or expired verification code');
+
+    const user = await this.users.findByEmail(email);
+    if (!user || user.isVerified) {
+      throw invalid;
+    }
+    const otp = await this.otps.findActiveForUser(user.id);
+    if (!otp) {
+      throw invalid;
+    }
+    if (otp.codeHash !== hashToken(code)) {
+      const attempts = await this.otps.recordFailedAttempt(otp.id);
+      if (attempts >= OTP_MAX_ATTEMPTS) {
+        // Too many wrong guesses — burn the code so it can't be brute-forced.
+        await this.otps.deleteForUser(user.id);
+      }
+      throw invalid;
+    }
+    await this.users.markVerified(user.id);
+    await this.otps.deleteForUser(user.id);
+    logger.info('Account verified', { userId: user.id });
+  }
+
+  /**
+   * Re-issue a verification OTP. Always resolves the same way whether or not the
+   * account exists / is already verified (no enumeration). A resend within the
+   * cooldown window is a silent no-op. Returns the raw OTP only in non-production.
+   */
+  async resendOtp(email: string): Promise<string | undefined> {
+    const user = await this.users.findByEmail(email);
+    if (!user || user.isVerified) {
+      return undefined;
+    }
+    const active = await this.otps.findActiveForUser(user.id);
+    if (active) {
+      const ageMs = Date.now() - active.createdAt.getTime();
+      if (ageMs < env.OTP_RESEND_COOLDOWN_SECONDS * SECOND_MS) {
+        // Still within the cooldown — do nothing, but reveal nothing either.
+        return undefined;
+      }
+    }
+    const rawOtp = await this.issueOtp(user.id);
+    await this.email.sendOtpEmail(user.email, rawOtp);
+    logger.info('Verification OTP resent', { userId: user.id });
+    return isProduction ? undefined : rawOtp;
   }
 
   /** Returns the profile of an authenticated user (token already verified). */
@@ -88,11 +159,17 @@ export class AuthService {
     if (!(await comparePassword(input.password, record.password))) {
       throw new UnauthorizedError('Invalid email or password');
     }
+    // Credentials are correct but the account is unverified — the password check
+    // ran first so this can't be used to probe which emails are registered.
+    if (!record.isVerified) {
+      throw new ForbiddenError('Please verify your email before logging in');
+    }
     const user: User = {
       id: record.id,
       firstName: record.firstName,
       lastName: record.lastName,
       email: record.email,
+      isVerified: record.isVerified,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -159,5 +236,13 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * DAY_MS);
     await this.refreshTokens.create(userId, hashToken(refreshToken), expiresAt);
     return { accessToken, refreshToken };
+  }
+
+  /** Generate a fresh OTP, replacing any existing one, and return the raw code. */
+  private async issueOtp(userId: string): Promise<string> {
+    const rawOtp = generateNumericOtp();
+    const expiresAt = new Date(Date.now() + env.OTP_TTL_MINUTES * MINUTE_MS);
+    await this.otps.replaceForUser(userId, hashToken(rawOtp), expiresAt);
+    return rawOtp;
   }
 }

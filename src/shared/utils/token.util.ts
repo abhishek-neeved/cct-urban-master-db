@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { env } from '@config/env';
+import { OTP_LENGTH } from '@config/constants';
 
 export interface AccessTokenPayload {
   sub: string;
@@ -35,3 +36,13 @@ export const generateOpaqueToken = (bytes = 48): string =>
 /** SHA-256 hash of a token, for at-rest storage/lookup. */
 export const hashToken = (value: string): string =>
   crypto.createHash('sha256').update(value).digest('hex');
+
+/**
+ * Generate a zero-padded, cryptographically-random numeric OTP (e.g. "042317").
+ * `crypto.randomInt` is unbiased over the range. The raw code is emailed to the
+ * user; only its `hashToken` hash is persisted.
+ */
+export const generateNumericOtp = (digits = OTP_LENGTH): string => {
+  const max = 10 ** digits;
+  return crypto.randomInt(0, max).toString().padStart(digits, '0');
+};

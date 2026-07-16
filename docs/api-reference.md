@@ -25,8 +25,9 @@ includes an `X-Request-Id` header for tracing.
 | ---- | --------------------------------------------------- |
 | 200  | OK                                                  |
 | 201  | Created                                             |
-| 400  | Bad request (e.g. invalid/expired reset token)      |
+| 400  | Bad request (e.g. invalid/expired reset token or OTP) |
 | 401  | Unauthorized (bad credentials / invalid token)      |
+| 403  | Forbidden (account not verified)                    |
 | 404  | Route not found                                     |
 | 409  | Conflict (email already registered)                 |
 | 422  | Validation failed (bad body/query)                  |
@@ -56,15 +57,25 @@ The auth flow uses a short-lived **access token** (JWT) plus a rotating,
 long-lived **refresh token** (opaque; only its hash is stored server-side).
 
 > **Rate limiting:** the credential endpoints (`register`, `login`,
-> `forgot-password`, `reset-password`) are limited to **10 requests per 15
-> minutes** per client to blunt brute-force and enumeration. Exceeding the limit
-> returns **429**. The limiter is disabled under `NODE_ENV=test`.
+> `forgot-password`, `reset-password`, `verify-otp`, `resend-otp`) are limited to
+> **10 requests per 15 minutes** per client to blunt brute-force and enumeration.
+> Exceeding the limit returns **429**. The limiter is disabled under
+> `NODE_ENV=test`.
+
+> **Email verification:** a new account is created unverified (`isVerified:
+> false`). Registration emails a **6-digit OTP** (valid for `OTP_TTL_MINUTES`,
+> default 10). The account must be verified via `POST /api/auth/verify-otp`
+> before it can log in — `login` returns **403** for an unverified account.
+> Outside production the OTP is also returned in the response as `otpDevCode`
+> (and logged by the stub email service) so the flow can be exercised without a
+> mail server.
 
 ### `POST /api/auth/register`
 
 Create an account. **Does not log the caller in** — no tokens are issued here;
-the account starts unverified (`isVerified: false`). Call `POST /api/auth/login`
-separately to obtain tokens.
+the account starts unverified (`isVerified: false`) and a 6-digit verification
+OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
+`POST /api/auth/login` to obtain tokens.
 
 **Body**
 
@@ -75,12 +86,13 @@ separately to obtain tokens.
 | `email`     | required, valid email, unique  |
 | `password`  | required, 8–128 chars          |
 
-**201**
+**201** — `otpDevCode` is present only outside production.
 ```json
 {
   "success": true,
   "data": {
-    "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "createdAt": "…", "updatedAt": "…" }
+    "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
+    "otpDevCode": "042317"
   },
   "requestId": "…"
 }
@@ -94,13 +106,53 @@ curl -X POST http://localhost:3000/api/auth/register \
   -d '{"firstName":"Jane","lastName":"Doe","email":"jane.doe@example.com","password":"supersecret"}'
 ```
 
+### `POST /api/auth/verify-otp`
+
+Verify an account with the emailed OTP. On success the account is marked
+verified and the OTP is consumed. Every failure returns the **same** generic
+`400` (no hint about which accounts exist or are already verified). A wrong code
+counts toward a cap of **5 attempts**, after which the code is invalidated and a
+new one must be requested via `resend-otp`.
+
+**Body**
+
+| Field   | Rules                     |
+| ------- | ------------------------- |
+| `email` | required, valid email     |
+| `otp`   | required, 6-digit numeric |
+
+**200** → `{ "verified": true }`
+
+**Errors:** `400` invalid or expired verification code · `422` invalid body
+
+```bash
+curl -X POST http://localhost:3000/api/auth/verify-otp \
+  -H "Content-Type: application/json" \
+  -d '{"email":"jane.doe@example.com","otp":"042317"}'
+```
+
+### `POST /api/auth/resend-otp`
+
+Re-issue a verification OTP. **Always returns 200**, whether or not the account
+exists or is already verified (no enumeration). A resend within the cooldown
+window (`OTP_RESEND_COOLDOWN_SECONDS`, default 60s) is a silent no-op. Outside
+production a freshly issued code is returned as `otpDevCode`.
+
+**Body:** `email`
+
+**200**
+```json
+{ "success": true, "data": { "message": "If the account exists and is unverified, a new code has been sent", "otpDevCode": "<dev-only>" }, "requestId": "…" }
+```
+
 ### `POST /api/auth/login`
 
 **Body:** `email`, `password`
 
 **200** → same shape as register (`user` + `accessToken` + `refreshToken`)
 
-**Errors:** `401` invalid email or password · `422` invalid body
+**Errors:** `401` invalid email or password · `403` account not verified ·
+`422` invalid body
 
 ### `POST /api/auth/refresh`
 
@@ -175,7 +227,7 @@ token in the `Authorization` header.
 ```json
 {
   "success": true,
-  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "createdAt": "…", "updatedAt": "…" } },
+  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
   "requestId": "…"
 }
 ```

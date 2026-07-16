@@ -13,6 +13,16 @@ export const MIN_PROD_SECRET_LENGTH = 32;
 /** Allowed range for bcrypt salt rounds (floor kept high enough to be costly). */
 export const BCRYPT_SALT_ROUNDS = { min: 10, max: 15, default: 12 } as const;
 
+/** Number of digits in an account-verification OTP. */
+export const OTP_LENGTH = 6;
+
+/**
+ * Wrong-code attempts allowed against a single OTP before it is invalidated.
+ * A 6-digit code has only 10^6 possibilities, so capping attempts is what keeps
+ * it from being brute-forced; the user must request a fresh code after this.
+ */
+export const OTP_MAX_ATTEMPTS = 5;
+
 /** Default values applied when an environment variable is unset. */
 export const ENV_DEFAULTS = {
   NODE_ENV: 'development',
@@ -23,6 +33,8 @@ export const ENV_DEFAULTS = {
   JWT_ACCESS_EXPIRES_IN: '15m',
   REFRESH_TOKEN_TTL_DAYS: 7,
   PASSWORD_RESET_TTL_MINUTES: 60,
+  OTP_TTL_MINUTES: 10,
+  OTP_RESEND_COOLDOWN_SECONDS: 60,
 } as const;
 
 /** Recognised deployment environments. */
