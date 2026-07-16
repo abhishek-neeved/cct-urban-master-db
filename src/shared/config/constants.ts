@@ -28,7 +28,7 @@ export const ENV_DEFAULTS = {
   NODE_ENV: 'development',
   PORT: 3000,
   LOG_LEVEL: 'info',
-  MONGO_URI: 'mongodb://127.0.0.1:27017/cdma_master_db',
+  DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/express_ts_layered',
   APP_URL: 'http://localhost:3000',
   JWT_ACCESS_EXPIRES_IN: '15m',
   REFRESH_TOKEN_TTL_DAYS: 7,

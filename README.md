@@ -11,13 +11,13 @@ at the data-access boundary.
 ## Features
 
 - 🏗️ **Layered architecture** — Controller → Service → Repository, wired via dependency injection
-- 🍃 **MongoDB + Mongoose** — data access behind a repository interface
+- 🐘 **Supabase Postgres + Drizzle ORM** — data access behind a repository interface; schema owned by [`@nvcct/db-entities`](https://github.com/NVCCT/cdma-db-entities)
 - 🛡️ **Validation layer** — Zod schemas enforced by a reusable `validate` middleware before controllers run
 - 📝 **Structured logging** with Winston (JSON in prod, pretty in dev)
 - 🔗 **Request IDs** on every request, propagated through async code via `AsyncLocalStorage`
 - 🧹 **ESLint + Prettier** for consistent, lint-clean code
 - 🪝 **Husky + lint-staged** git hooks (pre-commit lint/format, pre-push type-check + tests)
-- ✅ **Vitest** unit, integration, and **Supertest** e2e tests (integration/e2e run on an in-memory MongoDB)
+- ✅ **Vitest** unit, integration, and **Supertest** e2e tests (integration/e2e run on an in-memory Postgres, `@electric-sql/pglite`)
 - 🔒 Centralised error handling, Helmet + CORS
 
 ## Architecture
@@ -27,7 +27,7 @@ Request → Middleware (request-id, logger)
         → Router → validate() middleware   (validation layer — Zod)
         → Controller (HTTP mapping)
         → Service    (business logic)
-        → Repository (Mongoose / MongoDB)
+        → Repository (Drizzle ORM / Supabase Postgres)
 ```
 
 Each layer depends only on the abstraction of the layer below it, so any layer
@@ -46,7 +46,7 @@ src/
 │   ├── health/               liveness/readiness controller
 │   └── docs/                 OpenAPI JSON + Swagger UI routes
 ├── shared/                   cross-cutting code used by every module
-│   ├── config/               env validation + MongoDB connection
+│   ├── config/               env validation + Postgres connection
 │   ├── middleware/           request-id, request-logger, validate, error-handler
 │   ├── repositories/         BaseRepository<Attrs, Domain, CreateInput> (generic CRUD)
 │   ├── utils/                logger, errors, request-context, password/token utils
@@ -66,13 +66,15 @@ responsibilities — the folders just co-locate one feature's layers.
 
 ```bash
 pnpm install          # also sets up Husky via the "prepare" script
-cp .env.example .env  # set MONGO_URI (defaults to mongodb://127.0.0.1:27017/cdma_master_db)
+cp .env.example .env  # set DATABASE_URL (defaults to postgresql://postgres:postgres@127.0.0.1:5432/express_ts_layered)
 pnpm dev          # start with hot reload
 ```
 
-Requires a running MongoDB instance for `pnpm dev` / `pnpm start`. Tests do
-**not** need one — integration and e2e tests spin up an in-memory MongoDB via
-`mongodb-memory-server`.
+Requires a running Postgres instance for `pnpm dev` / `pnpm start`, with
+`@nvcct/db-entities`' migrations applied (see
+[Getting Started](./docs/getting-started.md)). Tests do **not** need one —
+integration and e2e tests spin up an in-memory Postgres via
+`@electric-sql/pglite`.
 
 ## Scripts
 
@@ -86,8 +88,8 @@ Requires a running MongoDB instance for `pnpm dev` / `pnpm start`. Tests do
 | `pnpm format`        | Format with Prettier                     |
 | `pnpm type-check`    | Type-check without emitting              |
 | `pnpm test:unit`         | Run unit tests                           |
-| `pnpm test:integration` | Run integration tests (in-memory Mongo) |
-| `pnpm test:e2e`      | Run e2e tests (in-memory Mongo)          |
+| `pnpm test:integration` | Run integration tests (in-memory Postgres) |
+| `pnpm test:e2e`      | Run e2e tests (in-memory Postgres)          |
 | `pnpm test:all`      | Run unit + integration + e2e tests       |
 | `pnpm test:coverage` | Run all tests with coverage              |
 

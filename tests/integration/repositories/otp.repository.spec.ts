@@ -1,18 +1,36 @@
 import { OtpRepository } from '@modules/auth/otp.repository';
+import { UserRepository } from '@modules/auth/user.repository';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
-
-const USER_ID = '507f1f77bcf86cd799439011';
-const OTHER_USER = '507f1f77bcf86cd799439012';
 
 describe('OtpRepository (integration)', () => {
   let repository: OtpRepository;
+  let users: UserRepository;
+  let USER_ID: string;
+  let OTHER_USER: string;
 
   beforeAll(connectTestDb);
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  beforeEach(() => {
+  beforeEach(async () => {
     repository = new OtpRepository();
+    users = new UserRepository();
+    // otps.user_id is a real foreign key to users.id, so every test needs
+    // actual persisted users to attach OTPs to.
+    const user = await users.create({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'ada@example.com',
+      password: 'hashed-pw',
+    });
+    const other = await users.create({
+      firstName: 'Grace',
+      lastName: 'Hopper',
+      email: 'grace@example.com',
+      password: 'hashed-pw',
+    });
+    USER_ID = user.id;
+    OTHER_USER = other.id;
   });
 
   it('stores an OTP and finds the active one for a user', async () => {
@@ -51,6 +69,11 @@ describe('OtpRepository (integration)', () => {
 
     const reread = await repository.findActiveForUser(USER_ID);
     expect(reread?.attempts).toBe(2);
+  });
+
+  it('returns 0 when recording an attempt against a non-existent OTP', async () => {
+    const ABSENT_ID = '00000000-0000-4000-8000-000000000000';
+    await expect(repository.recordFailedAttempt(ABSENT_ID)).resolves.toBe(0);
   });
 
   it('deletes every OTP for a user', async () => {

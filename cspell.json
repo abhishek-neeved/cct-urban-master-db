@@ -14,10 +14,15 @@
   "dictionaries": ["typescript", "node", "npm", "software-terms", "html"],
   "words": [
     "cdma",
+    "cooldown",
     "extensionless",
     "greppable",
     "healthcheck",
     "nvcct",
+    "pgbouncer",
+    "pglite",
+    "SQLSTATE",
+    "Supabase",
     "unstub",
     "uuidv"
   ],

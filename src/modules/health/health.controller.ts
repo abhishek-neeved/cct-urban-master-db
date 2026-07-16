@@ -6,13 +6,11 @@ import { failure, success } from '@models/api-response';
 export class HealthController {
   /**
    * Combined liveness + readiness probe. Reports `ok: 1` with 200 when the
-   * process is up AND MongoDB is reachable, or `ok: -1` with 503 when the
+   * process is up AND Postgres is reachable, or `ok: -1` with 503 when the
    * database is unavailable. Point both orchestrator probes at this endpoint.
    */
   check = (req: Request, res: Response): void => {
-    const dbUp = isDatabaseConnected();
-
-    if (dbUp) {
+    if (isDatabaseConnected()) {
       res
         .status(StatusCodes.OK)
         .json(success({ ok: 1, db: 'up', uptime: process.uptime() }, req.id));

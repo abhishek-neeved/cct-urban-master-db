@@ -1,0 +1,19 @@
+# Fail the install (don't just warn) when a dev's Node/pnpm doesn't satisfy
+# the "engines" field in package.json — keeps every environment on the same
+# runtime.
+engineStrict: true
+
+# Pin exact versions on `pnpm add` (no `^` ranges) so every dependency is
+# locked in package.json, not just the lockfile.
+saveExact: true
+
+allowBuilds:
+  # swagger-ui-dist's postinstall telemetry pinger — not needed, deny it.
+  '@scarf/scarf': false
+  esbuild: true
+
+# Newly published versions are held back for a day by default (supply-chain
+# protection). @nvcct/* is our own internal package published by this org, so
+# exempt it — its releases aren't third-party supply-chain risk.
+minimumReleaseAgeExclude:
+  - '@nvcct/*'

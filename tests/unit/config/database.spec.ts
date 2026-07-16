@@ -1,91 +1,84 @@
 import { vi } from 'vitest';
 
-// A dependency-free fake of the bits of the Mongoose connection the module
-// touches: an event registry (on/emit/listenerCount) plus a settable readyState.
+// A dependency-free fake of the bits of postgres.js/drizzle this module
+// touches: a callable client (with `.end()`) standing in for the tagged-
+// template `postgres()` client, and a `drizzle()` factory.
 const mocks = vi.hoisted(() => {
-  const listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
-  const connection = {
-    readyState: 0,
-    name: 'db',
-    host: 'example',
-    port: 27017,
-    listenerCount: (event: string) => listeners[event]?.length ?? 0,
-    on(event: string, cb: (...args: unknown[]) => void) {
-      (listeners[event] ??= []).push(cb);
-      return connection;
-    },
-    emit(event: string, ...args: unknown[]) {
-      (listeners[event] ?? []).forEach((cb) => cb(...args));
-    },
-  };
-  const mongoose = {
-    set: vi.fn(),
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    version: '9.0.0',
-    connection,
-  };
+  const clientFn = vi.fn(async () => []);
+  const end = vi.fn().mockResolvedValue(undefined);
+  const client = Object.assign(clientFn, { end });
+  const postgresFactory = vi.fn(() => client);
+  const drizzleFn = vi.fn(() => ({}));
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-  return { connection, mongoose, logger };
+  return { client, postgresFactory, drizzleFn, logger };
 });
 
-vi.mock('mongoose', () => ({ default: mocks.mongoose }));
+vi.mock('postgres', () => ({ default: mocks.postgresFactory }));
+vi.mock('drizzle-orm/postgres-js', () => ({ drizzle: mocks.drizzleFn }));
+vi.mock('@nvcct/db-entities', () => ({}));
 vi.mock('@utils/logger', () => ({ logger: mocks.logger }));
 
-const { connectDatabase, disconnectDatabase, isDatabaseConnected } =
+const { connectDatabase, disconnectDatabase, isDatabaseConnected, db } =
   await import('@config/database');
 
 describe('database config', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.connection.readyState = 0;
   });
 
-  it('connects with a fail-fast timeout, pins strictQuery, and logs success', async () => {
-    await connectDatabase('mongodb://example/db');
+  afterEach(async () => {
+    // Reset real module state (client/dbInstance) between tests, not just mock
+    // call counts — connectDatabase/disconnectDatabase mutate module-level state.
+    await disconnectDatabase();
+  });
 
-    expect(mocks.mongoose.set).toHaveBeenCalledWith('strictQuery', true);
-    expect(mocks.mongoose.connect).toHaveBeenCalledWith(
-      'mongodb://example/db',
-      expect.objectContaining({ serverSelectionTimeoutMS: 10_000 })
+  it('connects with prepared statements disabled, runs a health check, and logs success', async () => {
+    await connectDatabase('postgresql://example/db');
+
+    expect(mocks.postgresFactory).toHaveBeenCalledWith(
+      'postgresql://example/db',
+      expect.objectContaining({ prepare: false })
+    );
+    expect(mocks.client).toHaveBeenCalled(); // the `select 1` health-check call
+    expect(mocks.drizzleFn).toHaveBeenCalledWith(
+      mocks.client,
+      expect.objectContaining({ schema: expect.anything() })
     );
     expect(mocks.logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('Connected to MongoDB'),
-      expect.objectContaining({ database: 'db', host: 'example', port: 27017 })
+      expect.stringContaining('Connected to Postgres')
     );
   });
 
-  it('registers connection listeners once, even across repeated connects', async () => {
-    await connectDatabase('mongodb://example/db');
-    await connectDatabase('mongodb://example/db');
-    expect(mocks.connection.listenerCount('error')).toBe(1);
-    expect(mocks.connection.listenerCount('disconnected')).toBe(1);
-    expect(mocks.connection.listenerCount('reconnected')).toBe(1);
-  });
-
-  it('routes post-connect connection events to the logger', async () => {
-    await connectDatabase('mongodb://example/db');
-
-    const err = new Error('connection dropped');
-    mocks.connection.emit('error', err);
-    mocks.connection.emit('disconnected');
-    mocks.connection.emit('reconnected');
-
-    expect(mocks.logger.error).toHaveBeenCalledWith(err);
-    expect(mocks.logger.warn).toHaveBeenCalledWith(expect.stringContaining('disconnected'));
-    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining('reconnected'));
-  });
-
-  it('reports connection state from readyState', () => {
-    mocks.connection.readyState = 1;
+  it('reports connection state before and after connecting', async () => {
+    expect(isDatabaseConnected()).toBe(false);
+    await connectDatabase('postgresql://example/db');
     expect(isDatabaseConnected()).toBe(true);
-    mocks.connection.readyState = 0;
+  });
+
+  it('disconnects, ends the client, and logs closure', async () => {
+    await connectDatabase('postgresql://example/db');
+    await disconnectDatabase();
+
+    expect(mocks.client.end).toHaveBeenCalledTimes(1);
+    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining('connection closed'));
     expect(isDatabaseConnected()).toBe(false);
   });
 
-  it('disconnects and logs closure', async () => {
+  it('disconnecting without a prior connection is a no-op', async () => {
     await disconnectDatabase();
-    expect(mocks.mongoose.disconnect).toHaveBeenCalledTimes(1);
-    expect(mocks.logger.info).toHaveBeenCalledWith(expect.stringContaining('connection closed'));
+    expect(mocks.client.end).not.toHaveBeenCalled();
+  });
+
+  it('throws from the shared db instance when queried before connecting', () => {
+    expect(() => db.select).toThrow('Database not connected — call connectDatabase() first');
+  });
+
+  it('routes property access through to the real instance once connected', async () => {
+    const fakeInstance = { select: vi.fn() };
+    mocks.drizzleFn.mockReturnValueOnce(fakeInstance);
+
+    await connectDatabase('postgresql://example/db');
+
+    expect(db.select).toBe(fakeInstance.select);
   });
 });

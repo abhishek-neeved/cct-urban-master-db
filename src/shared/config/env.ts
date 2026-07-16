@@ -22,10 +22,8 @@ const envSchema = z
     NODE_ENV: z.enum(NODE_ENVS).default(ENV_DEFAULTS.NODE_ENV),
     PORT: z.coerce.number().int().positive().default(ENV_DEFAULTS.PORT),
     LOG_LEVEL: z.enum(LOG_LEVELS).default(ENV_DEFAULTS.LOG_LEVEL),
-
-    // Log output format. Unset -> JSON in production, pretty elsewhere (see logFormat).
     LOG_FORMAT: z.enum(LOG_FORMATS).optional(),
-    MONGO_URI: z.string().min(1).default(ENV_DEFAULTS.MONGO_URI),
+    DATABASE_URL: z.string().min(1).default(ENV_DEFAULTS.DATABASE_URL),
 
     // Base URL used to build links in emails (e.g. the password-reset link).
     APP_URL: z.string().url().default(ENV_DEFAULTS.APP_URL),

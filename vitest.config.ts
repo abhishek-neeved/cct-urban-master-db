@@ -18,16 +18,16 @@ const alias = [
   { find: /^@\//, replacement: `${r('./src')}/` },
 ];
 
-// Integration/e2e specs each spin up their own in-memory MongoDB; run those
-// files serially (mirrors the old jest `--runInBand`) so parallel instances
-// don't thrash. Unit tests stay parallel.
+// Integration/e2e specs each spin up their own in-memory Postgres (pglite,
+// WASM); run those files serially (mirrors the old jest `--runInBand`) so
+// parallel instances don't thrash. Unit tests stay parallel.
 const serial = { fileParallelism: false };
 
 export default defineConfig({
   resolve: { alias },
   test: {
     globals: true,
-    testTimeout: 60_000, // first integration/e2e run downloads a MongoDB binary
+    testTimeout: 30_000, // pglite has no separate binary to download, but schema push still takes a moment
     projects: [
       {
         extends: true,

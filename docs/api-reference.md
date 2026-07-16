@@ -81,8 +81,8 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 
 | Field       | Rules                          |
 | ----------- | ------------------------------ |
-| `firstName` | required, 1–60 chars           |
-| `lastName`  | required, 1–60 chars           |
+| `firstName` | required, 1–120 chars          |
+| `lastName`  | required, 1–120 chars          |
 | `email`     | required, valid email, unique  |
 | `password`  | required, 8–128 chars          |
 
@@ -91,8 +91,9 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 {
   "success": true,
   "data": {
-    "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
-    "otpDevCode": "042317"
+    "user": { "id": "…", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
+    "accessToken": "<jwt>",
+    "refreshToken": "<opaque>"
   },
   "requestId": "…"
 }
@@ -103,46 +104,7 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 ```bash
 curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"firstName":"Jane","lastName":"Doe","email":"jane.doe@example.com","password":"supersecret"}'
-```
-
-### `POST /api/auth/verify-otp`
-
-Verify an account with the emailed OTP. On success the account is marked
-verified and the OTP is consumed. Every failure returns the **same** generic
-`400` (no hint about which accounts exist or are already verified). A wrong code
-counts toward a cap of **5 attempts**, after which the code is invalidated and a
-new one must be requested via `resend-otp`.
-
-**Body**
-
-| Field   | Rules                     |
-| ------- | ------------------------- |
-| `email` | required, valid email     |
-| `otp`   | required, 6-digit numeric |
-
-**200** → `{ "verified": true }`
-
-**Errors:** `400` invalid or expired verification code · `422` invalid body
-
-```bash
-curl -X POST http://localhost:3000/api/auth/verify-otp \
-  -H "Content-Type: application/json" \
-  -d '{"email":"jane.doe@example.com","otp":"042317"}'
-```
-
-### `POST /api/auth/resend-otp`
-
-Re-issue a verification OTP. **Always returns 200**, whether or not the account
-exists or is already verified (no enumeration). A resend within the cooldown
-window (`OTP_RESEND_COOLDOWN_SECONDS`, default 60s) is a silent no-op. Outside
-production a freshly issued code is returned as `otpDevCode`.
-
-**Body:** `email`
-
-**200**
-```json
-{ "success": true, "data": { "message": "If the account exists and is unverified, a new code has been sent", "otpDevCode": "<dev-only>" }, "requestId": "…" }
+  -d '{"firstName":"Ada","lastName":"Lovelace","email":"ada@example.com","password":"supersecret"}'
 ```
 
 ### `POST /api/auth/login`

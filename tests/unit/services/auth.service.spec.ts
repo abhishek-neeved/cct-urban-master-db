@@ -8,13 +8,13 @@ import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } fro
 import { hashPassword } from '@utils/password.util';
 import { hashToken } from '@utils/token.util';
 import { OTP_MAX_ATTEMPTS } from '@config/constants';
-import { User, UserWithPassword } from '@modules/auth/user.types';
+import { User, UserWithPassword } from '@modules/auth/user.model';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
-  id: '507f1f77bcf86cd799439011',
-  firstName: 'Jane',
-  lastName: 'Doe',
-  email: 'jane.doe@example.com',
+  id: '00000000-0000-4000-8000-000000000000',
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  email: 'ada@example.com',
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
@@ -73,8 +73,6 @@ describe('AuthService', () => {
       const result = await service.register({
         firstName: user.firstName,
         lastName: user.lastName,
-        firstName: user.firstName,
-        lastName: user.lastName,
         email: user.email,
         password: 'supersecret',
       });
@@ -101,7 +99,7 @@ describe('AuthService', () => {
         service.register({
           firstName: 'X',
           lastName: 'Y',
-          email: 'jane.doe@example.com',
+          email: 'ada@example.com',
           password: 'supersecret',
         })
       ).rejects.toBeInstanceOf(ConflictError);
@@ -195,6 +193,21 @@ describe('AuthService', () => {
       expect(code).toBeUndefined();
       expect(otps.replaceForUser).not.toHaveBeenCalled();
       expect(email.sendOtpEmail).not.toHaveBeenCalled();
+    });
+
+    it('issues a fresh OTP once the resend cooldown has elapsed', async () => {
+      const user = buildUser({ isVerified: false });
+      users.findByEmail.mockResolvedValue(user);
+      // The active OTP was issued well past the cooldown window, so a resend proceeds.
+      otps.findActiveForUser.mockResolvedValue(
+        buildOtp('123456', { createdAt: new Date(Date.now() - 10 * 60 * 1000) })
+      );
+
+      const code = await service.resendOtp(user.email);
+
+      expect(otps.replaceForUser).toHaveBeenCalledTimes(1);
+      expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
+      expect(code).toMatch(/^\d{6}$/);
     });
 
     it('does nothing and reveals nothing for an unknown email', async () => {

@@ -4,12 +4,9 @@ import { createApp } from '@/app';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
 const credentials = {
-  firstName: 'Jane',
-  lastName: 'Doe',
-  email: 'jane.doe@example.com',
-  firstName: 'Jane',
-  lastName: 'Doe',
-  email: 'jane.doe@example.com',
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  email: 'ada@example.com',
   password: 'supersecret',
 };
 

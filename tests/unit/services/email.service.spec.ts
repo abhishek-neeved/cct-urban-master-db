@@ -39,4 +39,22 @@ describe('LoggerEmailService', () => {
     expect(loggerMock.warn.mock.calls[0][0]).not.toContain('secret');
     expect(loggerMock.info).not.toHaveBeenCalled();
   });
+
+  it('logs the OTP code at info level outside production (dev convenience)', async () => {
+    state.isProduction = false;
+    await service.sendOtpEmail('jane.doe@example.com', '123456');
+
+    expect(loggerMock.info).toHaveBeenCalledTimes(1);
+    expect(loggerMock.info.mock.calls[0][0]).toContain('123456');
+    expect(loggerMock.warn).not.toHaveBeenCalled();
+  });
+
+  it('never logs the OTP code in production, only a warning that no transport is configured', async () => {
+    state.isProduction = true;
+    await service.sendOtpEmail('jane.doe@example.com', '123456');
+
+    expect(loggerMock.warn).toHaveBeenCalledTimes(1);
+    expect(loggerMock.warn.mock.calls[0][0]).not.toContain('123456');
+    expect(loggerMock.info).not.toHaveBeenCalled();
+  });
 });

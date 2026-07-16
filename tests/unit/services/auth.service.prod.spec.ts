@@ -28,7 +28,15 @@ const buildUser = () => ({
 describe('AuthService (production)', () => {
   it('forgotPassword does not return the raw token in production', async () => {
     const users = {
-      findByEmail: vi.fn().mockResolvedValue(buildUser()),
+      findByEmail: vi.fn().mockResolvedValue({
+        id: '00000000-0000-4000-8000-000000000000',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'ada@example.com',
+        isVerified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
       setPasswordResetToken: vi.fn(),
     } as unknown as Mocked<IUserRepository>;
     const refreshTokens = {} as Mocked<IRefreshTokenRepository>;

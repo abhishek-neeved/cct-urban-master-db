@@ -16,21 +16,27 @@ Within the module, import siblings with **relative paths** (`./<resource>.servic
 use aliases (`@shared/*`, `@utils/*`, `@middleware/*`, `@models/*`) only for
 shared, cross-cutting code.
 
-1. **Model** — `src/modules/<resource>/<resource>.model.ts`
-   - Domain interface, `Create<Resource>Input` / `Update<Resource>Input` types
-   - Mongoose schema (with `timestamps: true`) + exported model
-   - `to<Resource>()` mapper (document → domain type; `_id` → `id`)
+1. **Table + domain types** — add `<resource>Table` to
+   `@nvcct/db-entities`' `src/schema/<resource>.ts` (the shared package, a sibling
+   repo — see its `add-table` skill), following its `pgTable`/`<Resource>Row`/`New<Resource>`
+   convention. In this repo, `src/modules/<resource>/<resource>.model.ts` holds only
+   the plain domain types (`<Resource>`, `Create<Resource>Input`) and the
+   `to<Resource>()` mapper (row → domain type) — no schema definition lives here.
 2. **Repository** — `src/modules/<resource>/<resource>.repository.ts`
    - An `I<Resource>Repository` interface + a class extending
-     `BaseRepository<Attrs, Domain, CreateInput>` (from `@shared/repositories/base.repository`),
-     whose constructor calls `super(<Resource>Model, to<Resource>, { duplicateKeyMessage })`
+     `BaseRepository<Table, Row, Domain, CreateInput>` (from `@shared/repositories/base.repository`),
+     whose constructor calls `super(db, <resource>Table, <resource>Table.id, to<Resource>, { duplicateKeyMessage })`
+     (`db` from `@shared/config/database`, the table from `@nvcct/db-entities`)
    - Inherit the generic CRUD (`findById`, `findOne`, `find`, `create`,
-     `updateById`, `deleteById`, `count`, `existsBy`); add only resource-specific
-     queries. The base already guards ObjectIds and maps duplicate-key → `ConflictError`.
+     `updateById`, `deleteById`, `count`, `existsBy`) — `findOne`/`find`/`count`/`existsBy`
+     take a Drizzle `SQL` condition (`eq`/`and`/`gt` from `drizzle-orm`), not a plain
+     filter object. Add only resource-specific queries. The base already guards
+     uuid ids and maps Postgres unique-violation errors (SQLSTATE `23505`) to
+     `ConflictError`.
 3. **Service** — `src/modules/<resource>/<resource>.service.ts`
    - Constructor-injected repository, business rules, typed errors from `@utils/errors`
 4. **Validator** — `src/modules/<resource>/<resource>.validator.ts`
-   - Zod `create` / `update` / `idParam` schemas (idParam validates a Mongo ObjectId)
+   - Zod `create` / `update` / `idParam` schemas (idParam validates a uuid)
 5. **Controller** — `src/modules/<resource>/<resource>.controller.ts`
    - Thin handlers reading already-validated `req.body`/`req.params`
    - Wrap each handler in `asyncHandler` (from `@middleware/async-handler`) — no try/catch
@@ -43,7 +49,7 @@ shared, cross-cutting code.
    `@modules/<resource>/<resource>.routes` and add one `router.use('/<resources>', create<Resource>Module())` line
 8. **Tests**
    - `tests/unit/services/<resource>.service.spec.ts` (mocked repository)
-   - `tests/integration/repositories/<resource>.repository.spec.ts` (in-memory Mongo via `tests/helpers/db.ts`)
+   - `tests/integration/repositories/<resource>.repository.spec.ts` (in-memory Postgres via `tests/helpers/db.ts`)
    - `tests/e2e/<resource>.e2e.spec.ts` (full CRUD + 422/409/404 cases)
 
 Use relative imports within the module and the shared path aliases

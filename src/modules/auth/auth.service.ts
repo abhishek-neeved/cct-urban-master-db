@@ -1,6 +1,6 @@
 import { env, isProduction } from '@config/env';
 import { OTP_MAX_ATTEMPTS } from '@config/constants';
-import { User } from './user.types';
+import { User } from './user.model';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
 import { IOtpRepository } from './otp.repository';
@@ -50,7 +50,7 @@ const SECOND_MS = 1000;
 /**
  * Standard JWT auth flow: register/login issue a short-lived access token plus
  * a rotating opaque refresh token; password reset uses a single-use hashed
- * token delivered by email. Business logic only — no HTTP, no Mongoose.
+ * token delivered by email. Business logic only — no HTTP, no drizzle-orm.
  */
 export class AuthService {
   constructor(

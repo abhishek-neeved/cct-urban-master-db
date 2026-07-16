@@ -3,8 +3,8 @@ import { z } from 'zod';
 const password = z.string().min(8, 'Password must be at least 8 characters').max(128);
 
 export const registerSchema = z.object({
-  firstName: z.string().min(1, 'First name is required').max(60),
-  lastName: z.string().min(1, 'Last name is required').max(60),
+  firstName: z.string().min(1, 'First name is required').max(120),
+  lastName: z.string().min(1, 'Last name is required').max(120),
   email: z.string().email('A valid email is required'),
   password,
 });

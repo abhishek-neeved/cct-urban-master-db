@@ -1,46 +1,63 @@
-import mongoose from 'mongoose';
+import postgres from 'postgres';
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import * as schema from '@nvcct/db-entities';
 import { env } from './env';
 import { logger } from '@utils/logger';
 
+type AppDatabase = PostgresJsDatabase<typeof schema>;
+
+let client: postgres.Sql | null = null;
+let dbInstance: AppDatabase | null = null;
+
 /**
- * Opens the shared Mongoose connection. Repositories use this global connection,
- * so it must be established before the server starts accepting requests.
+ * Opens the shared postgres.js connection pool and the Drizzle instance
+ * repositories use. Must be established before the server starts accepting
+ * requests.
  */
-export const connectDatabase = async (uri: string = env.MONGO_URI): Promise<void> => {
-  mongoose.set('strictQuery', true);
-
-  // Listeners for drops that happen AFTER the initial connect. Mongoose
-  // auto-reconnects, but an unhandled 'error' event would otherwise crash the
-  // process, so we attach handlers before connecting. Guard against double
-  // registration in case connectDatabase is called more than once (e.g. tests).
-  if (mongoose.connection.listenerCount('error') === 0) {
-    mongoose.connection.on('error', (err) => logger.error(err));
-    mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
-    mongoose.connection.on('reconnected', () => logger.info('MongoDB reconnected'));
-  }
-
-  // Fail fast at boot instead of hanging on the 30s default; the process exits
-  // and the orchestrator (k8s/systemd/docker) restarts it until Mongo is ready.
-  await mongoose.connect(uri, { serverSelectionTimeoutMS: 10_000 });
-
-  // Log safe connection details only — never the URI, which may embed
-  // credentials. host/port/name are the resolved values from the driver.
-  const { name, host, port } = mongoose.connection;
-  logger.info('✅ Connected to MongoDB', {
-    database: name,
-    host,
-    port,
-    mongooseVersion: mongoose.version,
+export const connectDatabase = async (
+  connectionString: string = env.DATABASE_URL
+): Promise<void> => {
+  client = postgres(connectionString, {
+    // Supabase's pooled connection (port 6543, pgbouncer transaction mode)
+    // doesn't support server-side prepared statements.
+    prepare: false,
   });
+  dbInstance = drizzle(client, { schema });
+
+  // Fail fast at boot instead of hanging; the process exits and the
+  // orchestrator (k8s/systemd/docker) restarts it until Postgres is ready.
+  await client`select 1`;
+  logger.info('✅ Connected to Postgres');
 };
 
 export const disconnectDatabase = async (): Promise<void> => {
-  await mongoose.disconnect();
-  logger.info('MongoDB connection closed');
+  await client?.end();
+  client = null;
+  dbInstance = null;
+  logger.info('Postgres connection closed');
 };
 
 /**
- * Whether the shared Mongoose connection is currently established (readyState
- * 1 = connected). Lets upper layers report readiness without importing Mongoose.
+ * Whether a usable database instance is currently established. Checks
+ * `dbInstance`, not `client` — tests swap in a pglite instance via
+ * `setDbInstance` without ever creating a real postgres.js `client`.
  */
-export const isDatabaseConnected = (): boolean => mongoose.connection.readyState === 1;
+export const isDatabaseConnected = (): boolean => dbInstance !== null;
+
+/** Test-only seam: swap the shared instance for a test double (e.g. pglite). */
+export const setDbInstance = (instance: AppDatabase): void => {
+  dbInstance = instance;
+};
+
+/**
+ * The shared Drizzle instance repositories query through. Repositories import
+ * this at module-eval time, before `connectDatabase()` runs at boot, so it's
+ * a proxy over the lazily-created real instance rather than the instance
+ * itself.
+ */
+export const db: AppDatabase = new Proxy({} as AppDatabase, {
+  get(_target, prop) {
+    if (!dbInstance) throw new Error('Database not connected — call connectDatabase() first');
+    return dbInstance[prop as keyof AppDatabase];
+  },
+});

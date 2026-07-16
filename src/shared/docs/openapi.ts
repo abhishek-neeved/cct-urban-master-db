@@ -35,13 +35,13 @@ const options: swaggerJSDoc.Options = {
         User: {
           type: 'object',
           properties: {
-            id: { type: 'string', example: '507f1f77bcf86cd799439011' },
-            firstName: { type: 'string', example: 'Jane' },
-            lastName: { type: 'string', example: 'Doe' },
-            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
-            isVerified: { type: 'boolean', example: false },
-            createdAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
-            updatedAt: { type: 'string', format: 'date-time', example: '2024-01-15T10:30:00.000Z' },
+            id: { type: 'string' },
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            email: { type: 'string', format: 'email' },
+            isVerified: { type: 'boolean' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
           required: [
             'id',
@@ -73,10 +73,10 @@ const options: swaggerJSDoc.Options = {
         RegisterRequest: {
           type: 'object',
           properties: {
-            firstName: { type: 'string', minLength: 1, maxLength: 60, example: 'Jane' },
-            lastName: { type: 'string', minLength: 1, maxLength: 60, example: 'Doe' },
-            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
-            password: { type: 'string', minLength: 8, maxLength: 128, example: 'supersecret123' },
+            firstName: { type: 'string', minLength: 1, maxLength: 120 },
+            lastName: { type: 'string', minLength: 1, maxLength: 120 },
+            email: { type: 'string', format: 'email' },
+            password: { type: 'string', minLength: 8, maxLength: 128 },
           },
           required: ['firstName', 'lastName', 'email', 'password'],
         },

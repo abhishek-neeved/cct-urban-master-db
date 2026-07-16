@@ -2,6 +2,8 @@ import { UserRepository } from '@modules/auth/user.repository';
 import { hashToken } from '@utils/token.util';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 
+const ABSENT_ID = '00000000-0000-4000-8000-000000000000';
+
 describe('UserRepository (integration)', () => {
   let repository: UserRepository;
 
@@ -15,9 +17,9 @@ describe('UserRepository (integration)', () => {
 
   const seed = () =>
     repository.create({
-      firstName: 'Jane',
-      lastName: 'Doe',
-      email: 'jane.doe@example.com',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'ada@example.com',
       password: 'hashed-pw',
     });
 
@@ -41,15 +43,15 @@ describe('UserRepository (integration)', () => {
 
   it('lowercases email and returns the hash only via the password-aware lookup', async () => {
     await repository.create({
-      firstName: 'Jane',
-      lastName: 'Doe',
-      email: 'Jane.Doe@Example.com',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      email: 'Ada@Example.com',
       password: 'hashed-pw',
     });
 
-    await expect(repository.findByEmail('jane.doe@example.com')).resolves.not.toBeNull();
+    await expect(repository.findByEmail('ada@example.com')).resolves.not.toBeNull();
 
-    const withPassword = await repository.findByEmailWithPassword('jane.doe@example.com');
+    const withPassword = await repository.findByEmailWithPassword('ada@example.com');
     expect(withPassword?.password).toBe('hashed-pw');
   });
 
@@ -58,8 +60,8 @@ describe('UserRepository (integration)', () => {
   });
 
   it('returns null for a missing / invalid id', async () => {
-    await expect(repository.findById('not-an-object-id')).resolves.toBeNull();
-    await expect(repository.findById('507f1f77bcf86cd799439011')).resolves.toBeNull();
+    await expect(repository.findById('not-a-uuid')).resolves.toBeNull();
+    await expect(repository.findById(ABSENT_ID)).resolves.toBeNull();
   });
 
   it('stores a reset token and finds it only while unexpired', async () => {
@@ -81,7 +83,7 @@ describe('UserRepository (integration)', () => {
 
     await repository.updatePassword(user.id, 'new-hashed-pw');
 
-    const withPassword = await repository.findByEmailWithPassword('jane.doe@example.com');
+    const withPassword = await repository.findByEmailWithPassword('ada@example.com');
     expect(withPassword?.password).toBe('new-hashed-pw');
     await expect(repository.findByValidResetToken(tokenHash)).resolves.toBeNull();
   });
