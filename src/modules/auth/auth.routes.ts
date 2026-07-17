@@ -74,7 +74,12 @@ export const createAuthModule = (): Router => {
    *           schema: { $ref: '#/components/schemas/LoginRequest' }
    *     responses:
    *       200:
-   *         description: OK
+   *         description: >
+   *           OK — also sets httpOnly `accessToken`/`refreshToken` cookies
+   *           (see the `cookieAuth` security scheme); the tokens are returned
+   *           in the body too, for non-browser clients.
+   *         headers:
+   *           Set-Cookie: { schema: { type: string }, description: "accessToken and refreshToken (httpOnly)" }
    *         content:
    *           application/json:
    *             schema: { $ref: '#/components/schemas/AuthPayload' }
@@ -190,14 +195,18 @@ export const createAuthModule = (): Router => {
    *   post:
    *     tags: [Auth]
    *     summary: Exchange a refresh token for a new (rotated) token pair
+   *     description: >
+   *       Reads the refresh token from the `refreshToken` cookie if present,
+   *       otherwise from the request body.
    *     requestBody:
-   *       required: true
    *       content:
    *         application/json:
    *           schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
    *     responses:
    *       200:
-   *         description: OK
+   *         description: OK — also re-sets the rotated httpOnly auth cookies.
+   *         headers:
+   *           Set-Cookie: { schema: { type: string }, description: "accessToken and refreshToken (httpOnly)" }
    *         content:
    *           application/json:
    *             schema: { $ref: '#/components/schemas/TokenPair' }
@@ -211,13 +220,16 @@ export const createAuthModule = (): Router => {
    *   post:
    *     tags: [Auth]
    *     summary: Revoke a refresh token
+   *     description: >
+   *       Reads the refresh token from the `refreshToken` cookie if present,
+   *       otherwise from the request body.
    *     requestBody:
-   *       required: true
    *       content:
    *         application/json:
    *           schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
    *     responses:
-   *       200: { description: Logged out }
+   *       200:
+   *         description: Logged out — also clears the httpOnly auth cookies.
    */
   router.post('/logout', validate({ body: refreshTokenSchema }), controller.logout);
 
@@ -256,6 +268,7 @@ export const createAuthModule = (): Router => {
    *     summary: Get the authenticated user (requires access token)
    *     security:
    *       - bearerAuth: []
+   *       - cookieAuth: []
    *     responses:
    *       200:
    *         description: OK

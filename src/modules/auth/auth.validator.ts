@@ -23,8 +23,11 @@ export const resendOtpSchema = z.object({
   email: z.string().email('A valid email is required'),
 });
 
+// Optional: the refresh token may instead arrive via the `refreshToken` cookie
+// set by `@utils/cookie.util` (see auth.controller's refresh/logout handlers,
+// which reject with 401 if neither the body nor a cookie supplies one).
 export const refreshTokenSchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
+  refreshToken: z.string().min(1, 'Refresh token is required').optional(),
 });
 
 export const forgotPasswordSchema = z.object({

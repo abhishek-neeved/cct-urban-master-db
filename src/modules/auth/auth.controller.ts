@@ -3,6 +3,19 @@ import { StatusCodes } from 'http-status-codes';
 import { AuthService } from './auth.service';
 import { asyncHandler } from '@middleware/async-handler';
 import { success } from '@models/api-response';
+import { setAuthCookies, clearAuthCookies } from '@utils/cookie.util';
+import { REFRESH_TOKEN_COOKIE } from '@config/constants';
+import { UnauthorizedError } from '@utils/errors';
+
+/** Prefers the `refreshToken` cookie (browser clients); falls back to the body
+ * (non-browser clients) — see auth.validator's now-optional `refreshTokenSchema`. */
+const readRefreshToken = (req: Request): string => {
+  const token = req.cookies?.[REFRESH_TOKEN_COOKIE] ?? req.body.refreshToken;
+  if (!token) {
+    throw new UnauthorizedError('Refresh token is required (cookie or body)');
+  }
+  return token;
+};
 
 /**
  * Auth HTTP handlers. Request bodies/queries are validated upstream by the
@@ -38,6 +51,7 @@ export class AuthController {
 
   login: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
     const { user, tokens } = await this.authService.login(req.body);
+    setAuthCookies(res, tokens);
     res.status(StatusCodes.OK).json(success({ user, ...tokens }, req.id));
   });
 
@@ -47,12 +61,14 @@ export class AuthController {
   });
 
   refresh: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const tokens = await this.authService.refresh(req.body.refreshToken);
+    const tokens = await this.authService.refresh(readRefreshToken(req));
+    setAuthCookies(res, tokens);
     res.status(StatusCodes.OK).json(success(tokens, req.id));
   });
 
   logout: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    await this.authService.logout(req.body.refreshToken);
+    await this.authService.logout(readRefreshToken(req));
+    clearAuthCookies(res);
     res.status(StatusCodes.OK).json(success({ message: 'Logged out' }, req.id));
   });
 

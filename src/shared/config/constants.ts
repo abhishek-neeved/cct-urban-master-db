@@ -46,3 +46,7 @@ export const LOG_LEVELS = ['error', 'warn', 'info', 'http', 'debug'] as const;
 /** Recognised log output formats. When unset, JSON is used in production and
  * pretty/colourised output elsewhere (resolved in env.ts). */
 export const LOG_FORMATS = ['json', 'pretty'] as const;
+
+/** Cookie names auth tokens are mirrored into (see `@utils/cookie.util`). */
+export const ACCESS_TOKEN_COOKIE = 'accessToken';
+export const REFRESH_TOKEN_COOKIE = 'refreshToken';

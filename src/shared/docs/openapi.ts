@@ -33,6 +33,13 @@ const options: swaggerJSDoc.Options = {
     components: {
       securitySchemes: {
         bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        cookieAuth: {
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'accessToken',
+          description:
+            'Set automatically on login/refresh (httpOnly). Alternative to bearerAuth for browser clients.',
+        },
       },
       schemas: {
         User: {
@@ -108,6 +115,8 @@ const options: swaggerJSDoc.Options = {
         },
         RefreshTokenRequest: {
           type: 'object',
+          description:
+            'Optional when the `refreshToken` cookie is present (set by login/refresh) — required otherwise.',
           properties: {
             refreshToken: {
               type: 'string',
@@ -115,7 +124,6 @@ const options: swaggerJSDoc.Options = {
               example: 'f3a9c1d7e5b8a2f6c4d9e1b7a5f8c2d6',
             },
           },
-          required: ['refreshToken'],
         },
         ForgotPasswordRequest: {
           type: 'object',

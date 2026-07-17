@@ -1,5 +1,6 @@
 import express, { Application } from 'express';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { corsMiddleware } from '@middleware/cors';
 import { requestIdMiddleware } from '@middleware/request-id';
 import { requestLoggerMiddleware } from '@middleware/request-logger';
@@ -14,6 +15,7 @@ export const createApp = (): Application => {
   app.use(corsMiddleware());
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
 
   // Observability: request id must come before the logger
   app.use(requestIdMiddleware);

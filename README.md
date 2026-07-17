@@ -13,6 +13,7 @@ at the data-access boundary.
 - 🏗️ **Layered architecture** — Controller → Service → Repository, wired via dependency injection
 - 🐘 **Supabase Postgres + Drizzle ORM** — data access behind a repository interface; schema owned by [`@nvcct/db-entities`](https://github.com/NVCCT/cdma-db-entities)
 - ✉️ **Email/OTP account verification** — new accounts start unverified; a 6-digit OTP gates login until verified
+- 🍪 **Cookie + token auth** — `login`/`refresh` set httpOnly cookies alongside the JSON tokens; browser and non-browser clients both work
 - 🛡️ **Validation layer** — Zod schemas enforced by a reusable `validate` middleware before controllers run
 - 📝 **Structured logging** with Winston (JSON in prod, pretty in dev)
 - 🔗 **Request IDs** on every request, propagated through async code via `AsyncLocalStorage`

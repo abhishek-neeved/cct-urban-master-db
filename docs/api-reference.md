@@ -70,6 +70,16 @@ long-lived **refresh token** (opaque; only its hash is stored server-side).
 > (and logged by the stub email service) so the flow can be exercised without a
 > mail server.
 
+> **Cookies vs. tokens:** `login` and `refresh` set both tokens as httpOnly
+> `accessToken`/`refreshToken` cookies **and** return them in the JSON body —
+> use whichever fits your client. Browser clients get CSRF-resistant,
+> XSS-resistant storage for free (cookies are httpOnly and, in production,
+> `Secure`/`SameSite=None` so a cross-origin frontend can use them with
+> `credentials: 'include'`); non-browser clients (mobile, service-to-service)
+> can ignore the cookies and use the returned tokens instead. `refresh` and
+> `logout` accept the refresh token from **either** the cookie or the body —
+> the cookie wins if both are present.
+
 ### `POST /api/auth/register`
 
 Create an account. **Does not log the caller in** — no tokens are issued here;
@@ -152,7 +162,8 @@ code was actually issued (not on a no-op).
 
 **Body:** `email`, `password`
 
-**200** → same shape as register (`user` + `accessToken` + `refreshToken`)
+**200** → same shape as register (`user` + `accessToken` + `refreshToken`),
+**and** sets the `accessToken`/`refreshToken` httpOnly cookies.
 
 **Errors:** `401` invalid email or password · `403` account not verified ·
 `422` invalid body
@@ -160,19 +171,23 @@ code was actually issued (not on a no-op).
 ### `POST /api/auth/refresh`
 
 Exchange a valid refresh token for a new pair. The presented refresh token is
-**rotated** (single-use) — the old one stops working.
+**rotated** (single-use) — the old one stops working. Reads the refresh token
+from the `refreshToken` cookie if present, otherwise from the body.
 
-**Body:** `refreshToken`
+**Body:** `refreshToken` (optional if the cookie is present)
 
-**200** → `{ "accessToken": "<jwt>", "refreshToken": "<opaque>" }`
+**200** → `{ "accessToken": "<jwt>", "refreshToken": "<opaque>" }`, and re-sets
+the rotated httpOnly cookies.
 
-**Errors:** `401` invalid or expired refresh token
+**Errors:** `401` invalid/expired refresh token, or missing from both cookie and body
 
 ### `POST /api/auth/logout`
 
-Revoke a refresh token server-side.
+Revoke a refresh token server-side and clear both auth cookies. Reads the
+refresh token from the `refreshToken` cookie if present, otherwise from the
+body.
 
-**Body:** `refreshToken`
+**Body:** `refreshToken` (optional if the cookie is present)
 
 **200** → `{ "message": "Logged out" }`
 
@@ -221,10 +236,11 @@ and **all** of the user's refresh tokens are revoked (forcing re-login).
 
 ### `GET /api/auth/me`
 
-Return the authenticated user. **Protected** — send the access token as a Bearer
-token in the `Authorization` header.
+Return the authenticated user. **Protected** — send the access token either as
+a Bearer token in the `Authorization` header, or rely on the `accessToken`
+cookie set by `login`/`refresh` (the header takes precedence if both are sent).
 
-**Headers:** `Authorization: Bearer <accessToken>`
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
 **200**
 ```json
