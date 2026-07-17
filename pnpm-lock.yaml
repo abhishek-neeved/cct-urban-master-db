@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@nvcct/db-entities':
-        specifier: 1.2.1
-        version: 1.2.1(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9))
+        specifier: 1.3.1
+        version: 1.3.1(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9))
       bcryptjs:
         specifier: 3.0.3
         version: 3.0.3
@@ -984,8 +984,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@nvcct/db-entities@1.2.1':
-    resolution: {integrity: sha512-O3Zu39gldeOYZH0ihYSmC7+YSWtfyWVyPFoORU001ErHCOOk7/fFdX6t8qgLa6sW9q94/JyekX3rzudKajQiig==, tarball: https://npm.pkg.github.com/download/@nvcct/db-entities/1.2.1/f761e105401bb2ed7c78344b00ed1654c6d24e9b}
+  '@nvcct/db-entities@1.3.1':
+    resolution: {integrity: sha512-JwkvJ/bZ5po1i4yi8rKQO/JBsCx5Ej/l9OQMxqZdvYaDdNmM27RbsA4ZZaSxl0b9tTIJbjo9VGkAW/tT3d5GsQ==, tarball: https://npm.pkg.github.com/download/@nvcct/db-entities/1.3.1/c81a871f59bdcfdea03328d096a609b6540ab1a1}
     engines: {node: '>=20'}
     peerDependencies:
       drizzle-orm: ^0.45.0
@@ -3817,7 +3817,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@nvcct/db-entities@1.2.1(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9))':
+  '@nvcct/db-entities@1.3.1(drizzle-orm@0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9))':
     dependencies:
       drizzle-orm: 0.45.2(@electric-sql/pglite@0.5.4)(postgres@3.4.9)
 

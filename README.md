@@ -45,6 +45,7 @@ cross-cutting code lives under `shared/`.
 src/
 ├── modules/                  feature slices (each self-wired via createXModule)
 │   ├── auth/                 types, repository, service, validator, controller, routes
+│   ├── blockchain/           read-only reference data — search + pagination
 │   ├── health/               liveness/readiness controller
 │   └── docs/                 OpenAPI JSON + Swagger UI routes
 ├── shared/                   cross-cutting code used by every module
@@ -110,6 +111,7 @@ integration and e2e tests spin up an in-memory Postgres via
 | GET    | `/api/auth/verify-forgot-password-token`    | Check whether a reset token is valid         |
 | POST   | `/api/auth/reset-password`                  | Set a new password using a reset token       |
 | GET    | `/api/auth/me`                              | Get the authenticated user (Bearer token)    |
+| GET    | `/api/blockchains`                          | List supported blockchains (search + pagination, protected) |
 
 Credential endpoints (register/login/forgot/reset) are rate-limited. Interactive
 docs (Swagger UI) are served at **`/api/docs`**, and the raw OpenAPI document at

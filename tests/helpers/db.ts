@@ -13,16 +13,22 @@ let pglite: PGlite | null = null;
  * `pushSchema` only creates tables/columns from the TS schema — it knows
  * nothing about the hand-authored SQL migrations (triggers) that live
  * alongside it in @nvcct/db-entities' `drizzle/` folder. Apply those
- * directly so pglite behaves like the real database. Skips `0000_*`
- * (redundant with pushSchema) and the Supabase-only `pg_cron` migration
- * (the extension isn't available here).
+ * directly so pglite behaves like the real database. Skips `0000_*` and
+ * `0003_*` (plain CREATE TABLE migrations, redundant with pushSchema), `0004_*`
+ * (production seed data — tests seed their own fixtures instead), and the
+ * Supabase-only `pg_cron` migration (the extension isn't available here).
  */
 const applyHandAuthoredMigrations = async (instance: PGlite): Promise<void> => {
   const packageJsonUrl = import.meta.resolve('@nvcct/db-entities/package.json');
   const migrationsDir = path.join(path.dirname(fileURLToPath(packageJsonUrl)), 'drizzle');
   const files = (await readdir(migrationsDir))
     .filter(
-      (file) => file.endsWith('.sql') && !file.startsWith('0000_') && !file.includes('pg_cron')
+      (file) =>
+        file.endsWith('.sql') &&
+        !file.startsWith('0000_') &&
+        !file.startsWith('0003_') &&
+        !file.startsWith('0004_') &&
+        !file.includes('pg_cron')
     )
     .sort();
   for (const file of files) {
@@ -49,6 +55,7 @@ export const clearTestDb = async (): Promise<void> => {
   await db.delete(schema.refreshTokensTable);
   await db.delete(schema.otpsTable);
   await db.delete(schema.usersTable);
+  await db.delete(schema.blockchainsTable);
 };
 
 /** Tear down the connection. */

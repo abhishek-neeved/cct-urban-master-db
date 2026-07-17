@@ -260,6 +260,48 @@ curl http://localhost:3000/api/auth/me \
 
 ---
 
+## Blockchains
+
+Read-only reference data for supported chains — seeded/managed out of band,
+not created or edited through this API.
+
+### `GET /api/blockchains`
+
+**Protected** — send the access token as a Bearer token or rely on the
+`accessToken` cookie (same as `/api/auth/me`).
+
+**Query**
+
+| Field       | Rules                                              |
+| ----------- | --------------------------------------------------- |
+| `search`    | optional, 1–120 chars — case-insensitive partial match on `name` or `symbol` |
+| `chainType` | optional — one of `evm`, `ton`, `solana`, `tron`, `aptos`, `sui` |
+| `page`      | optional positive integer, default `1`             |
+| `limit`     | optional positive integer (max `100`), default `10` |
+
+**200**
+```json
+{
+  "success": true,
+  "data": {
+    "data": [
+      { "id": "…", "name": "Ethereum", "symbol": "ETH", "icon": null, "rpc": null, "explorer": null, "walletProvider": null, "order": null, "chainId": null, "startBlock": null, "isTestnet": false, "chainType": "evm", "isEnabled": null, "createdAt": "…", "updatedAt": "…" }
+    ],
+    "meta": { "page": 1, "limit": 10, "total": 1, "totalPages": 1, "hasNextPage": false, "hasPrevPage": false }
+  },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid access token · `422` invalid query (e.g. an unrecognized `chainType`)
+
+```bash
+curl "http://localhost:3000/api/blockchains?search=eth&chainType=evm&page=1&limit=10" \
+  -H "Authorization: Bearer <accessToken>"
+```
+
+---
+
 ## Request tracing
 
 Send your own correlation id and it is echoed back and used in all logs:

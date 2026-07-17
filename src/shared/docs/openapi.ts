@@ -20,7 +20,7 @@ const options: swaggerJSDoc.Options = {
       title: 'CDMA Master DB API',
       version: '1.0.0',
       description:
-        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens), OTP-based email verification, and password reset.',
+        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens), OTP-based email verification, password reset, and blockchain reference data.',
     },
     servers: [{ url: env.APP_URL }],
     tags: [
@@ -28,6 +28,7 @@ const options: swaggerJSDoc.Options = {
         name: 'Auth',
         description: 'Registration, email/OTP verification, login, tokens and password reset',
       },
+      { name: 'Blockchains', description: 'Supported blockchain reference data' },
       { name: 'Health', description: 'Combined liveness + readiness probe' },
     ],
     components: {
@@ -144,6 +145,43 @@ const options: swaggerJSDoc.Options = {
             },
           },
           required: ['token', 'password'],
+        },
+        Blockchain: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string', example: 'Ethereum' },
+            symbol: { type: 'string', nullable: true, example: 'ETH' },
+            icon: { type: 'string', nullable: true },
+            rpc: { type: 'string', nullable: true },
+            explorer: { type: 'string', nullable: true },
+            walletProvider: { type: 'string', nullable: true },
+            order: { type: 'integer', nullable: true },
+            chainId: { type: 'string', nullable: true },
+            startBlock: { type: 'integer', nullable: true },
+            isTestnet: { type: 'boolean' },
+            chainType: {
+              type: 'string',
+              nullable: true,
+              enum: ['evm', 'ton', 'solana', 'tron', 'aptos', 'sui'],
+            },
+            isEnabled: { type: 'boolean', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+          required: ['id', 'name', 'isTestnet', 'createdAt', 'updatedAt'],
+        },
+        PaginationMeta: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', example: 1 },
+            limit: { type: 'integer', example: 10 },
+            total: { type: 'integer', example: 42 },
+            totalPages: { type: 'integer', example: 5 },
+            hasNextPage: { type: 'boolean' },
+            hasPrevPage: { type: 'boolean' },
+          },
+          required: ['page', 'limit', 'total', 'totalPages', 'hasNextPage', 'hasPrevPage'],
         },
         ErrorResponse: {
           type: 'object',
