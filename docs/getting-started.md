@@ -51,7 +51,7 @@ The full list of variables, defaults, and validation rules is documented in
 [Configuration](./configuration.md) (source of truth:
 [`src/shared/config/env.ts`](../src/shared/config/env.ts)).
 
-## 3. Start Postgres
+## 3. Start Postgres and apply the schema
 
 Point `DATABASE_URL` at any reachable Postgres. For a quick local instance with
 Docker:
@@ -60,8 +60,21 @@ Docker:
 docker run -d --name postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:17
 ```
 
-Or use a Supabase project (its pooled, port-6543 connection string works fine
-for `DATABASE_URL` — see [Migrations](#migrations) below for why).
+Or use a Supabase project — use its **direct** connection string (port 5432)
+for the migration step below, and the **pooled** one (port 6543) in `DATABASE_URL`
+for normal app traffic.
+
+The `users`/`otps`/`refresh_tokens` schema is owned by `@nvcct/db-entities`, not
+this repo. Apply its migrations once against your database:
+
+```bash
+for f in node_modules/@nvcct/db-entities/drizzle/*.sql; do
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+done
+```
+
+(`drizzle/0002_pg_cron_expired_cleanup.sql` requires the `pg_cron` extension —
+available on Supabase, not on a bare `postgres:17` container; skip it locally.)
 
 ## 4. Run the app
 
@@ -74,23 +87,12 @@ pnpm build
 pnpm start
 ```
 
-The `users`/`otps`/`refresh_tokens`/`blockchains` schema is owned by
-`@nvcct/db-entities`, not this repo — its migrations are synced into this
-repo's own [`drizzle/`](../drizzle) folder (`pnpm db:sync-migrations`) and
-**applied automatically on every boot** (see [Migrations](#migrations)), so
-there's no separate manual step. On startup you should see:
+On startup you should see:
 
 ```
-Acquiring migration lock…
-✅ Already up to date
 ✅ Connected to Postgres
 🚀 Server listening on port 3000 (development)
 ```
-
-(`drizzle/0002_pg_cron_expired_cleanup.sql` requires the `pg_cron` extension —
-available on Supabase, not on a bare `postgres:17` container. Boot will fail
-at that migration against a bare container; use a Supabase-backed
-`DATABASE_URL`, including locally.)
 
 ## 5. Verify it works
 
@@ -105,26 +107,6 @@ curl http://localhost:3000/api/health
 Continue to the [API Reference](./api-reference.md) to exercise the auth
 endpoints, or open the Swagger UI at `http://localhost:3000/api/docs`.
 
-## Migrations
-
-Schema migrations live in this repo's own [`drizzle/`](../drizzle) folder —
-copied from `@nvcct/db-entities` (which owns the schema, but ships no
-connection/migration runner of its own), not read from `node_modules` at
-runtime.
-
-| Script                       | What it does                                                       |
-| ----------------------------- | ------------------------------------------------------------------- |
-| `pnpm db:sync-migrations`     | Copies `@nvcct/db-entities`'s migration files into this repo's `drizzle/`. Run after bumping the dependency; review the diff and commit it. |
-| `pnpm db:migrate`             | Applies every not-yet-applied migration from `drizzle/`, tracked in a `drizzle.__drizzle_migrations` table. Runs automatically on every server boot ([`server.ts`](../src/server.ts)) — this is a manual/CI equivalent, e.g. to migrate without starting the server. |
-| `pnpm db:baseline-migrations` | **One-time only**, for a database whose schema was already applied by some other means before this tooling existed — marks every current migration as already-applied *without* running its SQL. Refuses to run if the tracking table already has rows. |
-
-Migrations apply inside a single transaction holding a
-`pg_advisory_xact_lock` — safe under Supabase's pooled (PgBouncer
-transaction-mode) connection string, unlike a session-level advisory lock —
-so a multi-instance deployment never runs migrations concurrently: every
-instance but one simply blocks until the first commits, then finds
-everything already applied.
-
 ## Troubleshooting
 
 | Symptom                                  | Cause / Fix                                                          |
@@ -132,6 +114,4 @@ everything already applied.
 | `Invalid environment configuration`       | An env var failed validation — check the logged field errors            |
 | Server hangs on start, no "Connected"     | Postgres not reachable at `DATABASE_URL`                                |
 | `husky - .git can't be found`             | Run `git init` before `pnpm install` (Husky needs a git repo)           |
-| Server fails to boot with a `pg_cron` error | You're pointed at a bare Postgres, not Supabase — see step 4 above    |
-| `Can't find meta/_journal.json file`      | Run `pnpm db:sync-migrations` first — `drizzle/` doesn't exist yet       |
-| Registration/login fails with a DB error  | Migrations haven't been applied — see [Migrations](#migrations); they should auto-apply on boot |
+| Registration/login fails with a DB error  | Migrations from `@nvcct/db-entities` haven't been applied — see step 3  |

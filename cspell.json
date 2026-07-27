@@ -14,22 +14,19 @@
   "dictionaries": ["typescript", "node", "npm", "software-terms", "html"],
   "words": [
     "aptos",
-    "baselined",
     "cdma",
     "cooldown",
     "extensionless",
     "greppable",
     "healthcheck",
     "ilike",
-    "Millis",
     "nvcct",
     "pgbouncer",
     "pglite",
     "SQLSTATE",
     "Supabase",
     "unstub",
-    "uuidv",
-    "xact"
+    "uuidv"
   ],
   "ignoreRegExpList": []
 }

@@ -43,17 +43,6 @@ docker run -d --name cdma-master-db \
 > Prefer a secrets manager or orchestrator secret over `-e` on the command line
 > for `JWT_ACCESS_SECRET` and `DATABASE_URL`.
 
-## Migrations on boot
-
-Every instance runs [`runMigrations()`](../src/scripts/migrate.ts) before
-connecting its app database pool — no separate deploy step. Scaling to
-multiple replicas is safe: migrations apply inside a Postgres advisory-lock-
-guarded transaction, so only one instance actually applies them at a time;
-the rest block briefly on the lock, then find everything already applied.
-See [Getting Started § Migrations](./getting-started.md#migrations) for the
-full mechanism and the `db:sync-migrations`/`db:migrate`/`db:baseline-migrations`
-scripts.
-
 ## Health check
 
 The image declares a `HEALTHCHECK` that polls the combined health probe
@@ -73,9 +62,8 @@ rejections are logged rather than crashing the process.
 - [ ] `NODE_ENV=production`
 - [ ] `JWT_ACCESS_SECRET` set to a strong secret (≥ 32 chars, not the dev default)
 - [ ] `CORS_ORIGINS` lists your real front-end origin(s)
-- [ ] `DATABASE_URL` points at your production database — migrations apply
-      automatically on boot (see [Getting Started](./getting-started.md#migrations)),
-      so there's no separate manual migration step
+- [ ] `DATABASE_URL` points at your production database, with `@nvcct/db-entities`'
+      migrations applied (see [Getting Started](./getting-started.md#3-start-postgres-and-apply-the-schema))
 - [ ] `APP_URL` set to the public API URL (used in reset-password email links)
 - [ ] A real email transport wired in place of the dev `LoggerEmailService`
       (see [`src/shared/services/email.service.ts`](../src/shared/services/email.service.ts))

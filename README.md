@@ -57,10 +57,9 @@ src/
 │   ├── services/             cross-cutting services (e.g. email)
 │   ├── docs/                 OpenAPI document assembly (swagger-jsdoc)
 │   └── types/                Express type augmentation
-├── scripts/                  db:sync-migrations, db:migrate, db:baseline-migrations
 ├── routes/index.ts           thin mount table (composition root)
 ├── app.ts                    app assembly
-└── server.ts                 entry point (migrates, connects DB, then listens)
+└── server.ts                 entry point (connects DB, then listens)
 ```
 
 Within a module, controllers/services/validators keep their strict layer
@@ -74,32 +73,28 @@ cp .env.example .env  # set DATABASE_URL (defaults to postgresql://postgres:post
 pnpm dev          # start with hot reload
 ```
 
-Requires a running Postgres instance for `pnpm dev` / `pnpm start` — schema
-migrations (owned by `@nvcct/db-entities`, synced into this repo's own
-`drizzle/` folder) apply automatically on boot, so there's no manual step (see
-[Getting Started](./docs/getting-started.md)). Tests do **not** need a
-database at all — integration and e2e tests spin up an in-memory Postgres via
+Requires a running Postgres instance for `pnpm dev` / `pnpm start`, with
+`@nvcct/db-entities`' migrations applied (see
+[Getting Started](./docs/getting-started.md)). Tests do **not** need one —
+integration and e2e tests spin up an in-memory Postgres via
 `@electric-sql/pglite`.
 
 ## Scripts
 
-| Script                       | Description                              |
-| ----------------------------- | ---------------------------------------- |
-| `pnpm dev`                    | Start dev server with hot reload         |
-| `pnpm build`                  | Compile TypeScript to `dist/`            |
-| `pnpm start`                  | Run the compiled server                  |
-| `pnpm db:sync-migrations`     | Pull `@nvcct/db-entities`'s migrations into this repo's `drizzle/` |
-| `pnpm db:migrate`             | Apply pending migrations (also runs automatically on boot) |
-| `pnpm db:baseline-migrations` | One-time: mark migrations as applied without running them |
-| `pnpm lint`                   | Lint the codebase                        |
-| `pnpm lint:fix`               | Lint and auto-fix                        |
-| `pnpm format`                 | Format with Prettier                     |
-| `pnpm type-check`             | Type-check without emitting              |
-| `pnpm test:unit`              | Run unit tests                           |
-| `pnpm test:integration`       | Run integration tests (in-memory Postgres) |
-| `pnpm test:e2e`               | Run e2e tests (in-memory Postgres)          |
-| `pnpm test:all`               | Run unit + integration + e2e tests       |
-| `pnpm test:coverage`          | Run all tests with coverage              |
+| Script                  | Description                              |
+| ----------------------- | ---------------------------------------- |
+| `pnpm dev`           | Start dev server with hot reload         |
+| `pnpm build`         | Compile TypeScript to `dist/`            |
+| `pnpm start`             | Run the compiled server                  |
+| `pnpm lint`          | Lint the codebase                        |
+| `pnpm lint:fix`      | Lint and auto-fix                        |
+| `pnpm format`        | Format with Prettier                     |
+| `pnpm type-check`    | Type-check without emitting              |
+| `pnpm test:unit`         | Run unit tests                           |
+| `pnpm test:integration` | Run integration tests (in-memory Postgres) |
+| `pnpm test:e2e`      | Run e2e tests (in-memory Postgres)          |
+| `pnpm test:all`      | Run unit + integration + e2e tests       |
+| `pnpm test:coverage` | Run all tests with coverage              |
 
 ## API
 

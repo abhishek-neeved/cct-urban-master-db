@@ -138,11 +138,9 @@ the same checks plus a security workflow (CodeQL, dependency review, `pnpm audit
   `@electric-sql/pglite` instance per test file and pushes `@nvcct/db-entities`'
   schema plus its hand-authored trigger migration into it (not the Supabase-only
   `pg_cron` one).
-- `pnpm dev` / `pnpm start` DO need a real Postgres at `DATABASE_URL`. Migrations
-  live in this repo's own `drizzle/` folder (synced from `@nvcct/db-entities`
-  via `pnpm db:sync-migrations`) and apply automatically on boot, guarded by a
-  Postgres advisory lock so concurrent instances don't race — see
-  [docs/getting-started.md § Migrations](./docs/getting-started.md#migrations).
+- `pnpm dev` / `pnpm start` DO need a real Postgres at `DATABASE_URL`, with
+  `@nvcct/db-entities`' migrations already applied (see
+  [docs/getting-started.md](./docs/getting-started.md)).
 - Husky hooks require a git repo (`git init`). pre-commit runs lint-staged;
   pre-push runs type-check + unit tests.
 - A `PostToolUse` hook auto-formats edited `.ts` files with Prettier

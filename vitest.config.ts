@@ -46,11 +46,8 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
       include: ['src/**/*.ts'],
-      // Bootstrap/wiring with no branching logic to assert on. src/scripts/**
-      // are ops scripts that open their own real Postgres connection
-      // (advisory locks, migration application) — exercised manually /
-      // against a real database, not the pglite-backed test suite.
-      exclude: ['src/server.ts', 'src/scripts/**', 'src/**/*.d.ts', 'src/shared/types/**'],
+      // Bootstrap/wiring with no branching logic to assert on.
+      exclude: ['src/server.ts', 'src/**/*.d.ts', 'src/shared/types/**'],
       // Enforce full coverage: `pnpm test:coverage` (and CI) fail if any metric
       // regresses. New code must ship with tests — that's the gate.
       thresholds: {
