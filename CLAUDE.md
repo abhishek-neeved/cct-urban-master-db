@@ -13,8 +13,7 @@ logging, and Vitest tests. The project is **native ESM** (`"type": "module"`,
 
 The current API surface is the **auth** module (`/api/auth/*`): register,
 verify-otp, resend-otp, login, refresh, logout, forgot-password,
-verify-forgot-password-token, reset-password; and the read-only **blockchain**
-module (`GET /api/blockchains`: search + pagination). See
+verify-forgot-password-token, reset-password. See
 [`docs/api-reference.md`](./docs/api-reference.md).
 
 ## Architecture (respect the layering)
@@ -39,16 +38,11 @@ Keep each layer's responsibility strict:
 - **Repository** — the ONLY layer that imports `drizzle-orm`/`@nvcct/db-entities`.
   Extend `BaseRepository<Table, Row, Domain, CreateInput>`
   (`@shared/repositories/base.repository`) to inherit generic CRUD (`findById`,
-  `findOne`, `find`, `findPaginated`, `create`, `updateById`, `deleteById`,
-  `count`, `existsBy`) — it guards uuid ids and maps Postgres unique-violation
-  errors (SQLSTATE `23505`) to `ConflictError`. `findOne`/`find`/`findPaginated`/
-  `count`/`existsBy` take a Drizzle `SQL` condition (build with `eq`/`and`/`gt`
-  from `drizzle-orm`), not a plain filter object. `findPaginated(where, page,
-  limit)` runs the page and count queries in parallel against the *same*
-  `where` (so `total` reflects the filtered set) and wraps the result with
-  `buildPaginatedResult` from `@nvcct/db-entities` — reuse it for any list
-  endpoint that needs search + pagination rather than hand-rolling one. Add
-  only entity-specific queries beyond that. Map rows to the domain type via
+  `findOne`, `find`, `create`, `updateById`, `deleteById`, `count`, `existsBy`) —
+  it guards uuid ids and maps Postgres unique-violation errors (SQLSTATE `23505`)
+  to `ConflictError`. `findOne`/`find`/`count`/`existsBy` take a Drizzle `SQL`
+  condition (build with `eq`/`and`/`gt` from `drizzle-orm`), not a plain filter
+  object. Add only entity-specific queries. Map rows to the domain type via
   `to<Entity>()`; Postgres details (raw rows) never leak upward. Not every
   repository extends `BaseRepository` — `RefreshTokenRepository` queries its
   table directly, matching its pre-migration shape.
@@ -62,7 +56,7 @@ under `src/shared/` (`config/`, `middleware/`, `utils/`, `models/`, `services/`,
 
 ```
 src/
-  modules/<feature>/   # e.g. auth/ — the reference slice; blockchain/, health/, docs/
+  modules/<feature>/   # e.g. auth/ — the reference slice; health/, docs/
   shared/              # config, middleware, utils, models, docs, types
   routes/index.ts      # thin mount table
   app.ts  server.ts

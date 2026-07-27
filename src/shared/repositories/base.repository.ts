@@ -2,7 +2,6 @@ import { count, eq, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { validate as isUuid } from 'uuid';
-import { buildPaginatedResult, type PaginatedResult } from '@nvcct/db-entities';
 import { ConflictError } from '@utils/errors';
 
 /** Postgres signals a unique-constraint violation with SQLSTATE 23505 (a string, unlike Mongo's numeric 11000). */
@@ -84,33 +83,6 @@ export abstract class BaseRepository<TTable extends PgTable, TRow, TDomain, TCre
     const query = this.db.select().from(this.table as PgTable);
     const rows = where ? await query.where(where) : await query;
     return rows.map((row) => this.toDomain(row as TRow));
-  }
-
-  /**
-   * Find rows matching `where` one page at a time. Runs the page query and the
-   * count query in parallel against the *same* `where`, so `total` reflects
-   * the filtered set — not the whole table — unlike a naive count-then-slice.
-   */
-  async findPaginated(
-    where: SQL | undefined,
-    page: number,
-    limit: number
-  ): Promise<PaginatedResult<TDomain>> {
-    const offset = (page - 1) * limit;
-    const dataQuery = this.db.select().from(this.table as PgTable);
-    const countQuery = this.db.select({ value: count() }).from(this.table as PgTable);
-
-    const [rows, [countRow]] = await Promise.all([
-      (where ? dataQuery.where(where) : dataQuery).limit(limit).offset(offset),
-      where ? countQuery.where(where) : countQuery,
-    ]);
-
-    return buildPaginatedResult(
-      rows.map((row) => this.toDomain(row as TRow)),
-      Number(countRow.value),
-      page,
-      limit
-    );
   }
 
   /** Persist a new row, mapping a unique-constraint violation to a `ConflictError`. */

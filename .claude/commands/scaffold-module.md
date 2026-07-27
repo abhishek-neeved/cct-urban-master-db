@@ -19,7 +19,7 @@ shared, cross-cutting code.
 1. **Table + domain types** — add `<resource>Table` to
    `@nvcct/db-entities`' `src/schema/<resource>.ts` (the shared package, a sibling
    repo — see its `add-table` skill), following its `pgTable`/`<Resource>Row`/`New<Resource>`
-   convention. In this repo, `src/modules/<resource>/<resource>.types.ts` holds only
+   convention. In this repo, `src/modules/<resource>/<resource>.model.ts` holds only
    the plain domain types (`<Resource>`, `Create<Resource>Input`) and the
    `to<Resource>()` mapper (row → domain type) — no schema definition lives here.
 2. **Repository** — `src/modules/<resource>/<resource>.repository.ts`
@@ -27,15 +27,12 @@ shared, cross-cutting code.
      `BaseRepository<Table, Row, Domain, CreateInput>` (from `@shared/repositories/base.repository`),
      whose constructor calls `super(db, <resource>Table, <resource>Table.id, to<Resource>, { duplicateKeyMessage })`
      (`db` from `@shared/config/database`, the table from `@nvcct/db-entities`)
-   - Inherit the generic CRUD (`findById`, `findOne`, `find`, `findPaginated`,
-     `create`, `updateById`, `deleteById`, `count`, `existsBy`) — `findOne`/`find`/
-     `findPaginated`/`count`/`existsBy` take a Drizzle `SQL` condition (`eq`/`and`/`gt`
-     from `drizzle-orm`), not a plain filter object. For a searchable/paginated list
-     endpoint, build the `SQL` condition and call `findPaginated(where, page, limit)` —
-     it returns `@nvcct/db-entities`' `PaginatedResult<Domain>` shape (`data` + `meta`)
-     already computed correctly against the filtered set. Add only resource-specific
-     queries beyond that. The base already guards uuid ids and maps Postgres
-     unique-violation errors (SQLSTATE `23505`) to `ConflictError`.
+   - Inherit the generic CRUD (`findById`, `findOne`, `find`, `create`,
+     `updateById`, `deleteById`, `count`, `existsBy`) — `findOne`/`find`/`count`/`existsBy`
+     take a Drizzle `SQL` condition (`eq`/`and`/`gt` from `drizzle-orm`), not a plain
+     filter object. Add only resource-specific queries. The base already guards
+     uuid ids and maps Postgres unique-violation errors (SQLSTATE `23505`) to
+     `ConflictError`.
 3. **Service** — `src/modules/<resource>/<resource>.service.ts`
    - Constructor-injected repository, business rules, typed errors from `@utils/errors`
 4. **Validator** — `src/modules/<resource>/<resource>.validator.ts`

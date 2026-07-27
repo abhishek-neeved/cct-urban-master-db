@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { HealthController } from '@modules/health/health.controller';
 import { createAuthModule } from '@modules/auth/auth.routes';
-import { createBlockchainModule } from '@modules/blockchain/blockchain.routes';
 import { createDocsModule } from '@modules/docs/docs.routes';
 
 /**
@@ -27,7 +26,6 @@ export const createApiRouter = (): Router => {
   router.get('/health', health.check);
   router.use('/', createDocsModule());
   router.use('/auth', createAuthModule());
-  router.use('/blockchains', createBlockchainModule());
 
   return router;
 };

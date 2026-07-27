@@ -13,13 +13,11 @@
   ],
   "dictionaries": ["typescript", "node", "npm", "software-terms", "html"],
   "words": [
-    "aptos",
     "cdma",
     "cooldown",
     "extensionless",
     "greppable",
     "healthcheck",
-    "ilike",
     "nvcct",
     "pgbouncer",
     "pglite",
