@@ -2,9 +2,13 @@ import { Server } from 'node:http';
 import { createApp } from './app';
 import { env } from '@config/env';
 import { connectDatabase, disconnectDatabase } from '@config/database';
+import { runMigrations } from './scripts/migrate';
 import { logger } from '@utils/logger';
 
 const start = async (): Promise<void> => {
+  // Advisory-lock-guarded, so a multi-instance deployment doesn't race to
+  // apply migrations concurrently — see `runMigrations`.
+  await runMigrations();
   await connectDatabase();
 
   const app = createApp();
