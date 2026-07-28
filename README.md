@@ -11,7 +11,7 @@ at the data-access boundary.
 ## Features
 
 - 🏗️ **Layered architecture** — Controller → Service → Repository, wired via dependency injection
-- 🐘 **Supabase Postgres + Drizzle ORM** — data access behind a repository interface; schema owned by [`@nvcct/db-entities`](https://github.com/NVCCT/cdma-db-entities)
+- 🍃 **MongoDB + Mongoose** — data access behind a repository interface; schemas/models live per-module (e.g. `src/modules/auth/auth.model.ts`), not in a shared package
 - ✉️ **Email/OTP account verification** — new accounts start unverified; a 6-digit OTP gates login until verified
 - 🍪 **Cookie + token auth** — `login`/`refresh` set httpOnly cookies alongside the JSON tokens; browser and non-browser clients both work
 - 🛡️ **Validation layer** — Zod schemas enforced by a reusable `validate` middleware before controllers run
@@ -19,7 +19,7 @@ at the data-access boundary.
 - 🔗 **Request IDs** on every request, propagated through async code via `AsyncLocalStorage`
 - 🧹 **ESLint + Prettier** for consistent, lint-clean code
 - 🪝 **Husky + lint-staged** git hooks (pre-commit lint/format, pre-push type-check + tests)
-- ✅ **Vitest** unit, integration, and **Supertest** e2e tests (integration/e2e run on an in-memory Postgres, `@electric-sql/pglite`)
+- ✅ **Vitest** unit, integration, and **Supertest** e2e tests (integration/e2e run on an in-memory MongoDB, `mongodb-memory-server`)
 - 🔒 Centralised error handling, Helmet + CORS
 
 ## Architecture
@@ -29,7 +29,7 @@ Request → Middleware (request-id, logger)
         → Router → validate() middleware   (validation layer — Zod)
         → Controller (HTTP mapping)
         → Service    (business logic)
-        → Repository (Drizzle ORM / Supabase Postgres)
+        → Repository (Mongoose / MongoDB)
 ```
 
 Each layer depends only on the abstraction of the layer below it, so any layer
@@ -38,19 +38,19 @@ business logic. Request validation is a distinct layer: the `validate`
 middleware parses `body`/`params`/`query` against Zod schemas and hands
 already-validated data to the controller.
 
-Feature-first: everything for a feature lives together under `modules/<feature>/`;
-cross-cutting code lives under `shared/`.
+Feature-first: everything for a feature lives together under `modules/<feature>/`,
+including that feature's Mongoose models; cross-cutting code lives under `shared/`.
 
 ```
 src/
 ├── modules/                  feature slices (each self-wired via createXModule)
-│   ├── auth/                 types, repository, service, validator, controller, routes
+│   ├── auth/                 model, types, repository, service, validator, controller, routes
 │   ├── health/               liveness/readiness controller
 │   └── docs/                 OpenAPI JSON + Swagger UI routes
 ├── shared/                   cross-cutting code used by every module
-│   ├── config/               env validation + Postgres connection
+│   ├── config/               env validation + MongoDB connection
 │   ├── middleware/           request-id, request-logger, validate, error-handler
-│   ├── repositories/         BaseRepository<Attrs, Domain, CreateInput> (generic CRUD)
+│   ├── repositories/         BaseRepository<Row, Domain, CreateInput> (generic CRUD)
 │   ├── utils/                logger, errors, request-context, password/token utils
 │   ├── models/               API response shapes (success/failure envelopes)
 │   ├── services/             cross-cutting services (e.g. email)
@@ -68,15 +68,14 @@ responsibilities — the folders just co-locate one feature's layers.
 
 ```bash
 pnpm install          # also sets up Husky via the "prepare" script
-cp .env.example .env  # set DATABASE_URL (defaults to postgresql://postgres:postgres@127.0.0.1:5432/express_ts_layered)
+cp .env.example .env  # set DATABASE_URL (defaults to mongodb://127.0.0.1:27017/express_ts_layered)
 pnpm dev          # start with hot reload
 ```
 
-Requires a running Postgres instance for `pnpm dev` / `pnpm start`, with
-`@nvcct/db-entities`' migrations applied (see
+Requires a running MongoDB instance for `pnpm dev` / `pnpm start` (see
 [Getting Started](./docs/getting-started.md)). Tests do **not** need one —
-integration and e2e tests spin up an in-memory Postgres via
-`@electric-sql/pglite`.
+integration and e2e tests spin up an in-memory MongoDB via
+`mongodb-memory-server`.
 
 ## Scripts
 
@@ -90,8 +89,8 @@ integration and e2e tests spin up an in-memory Postgres via
 | `pnpm format`        | Format with Prettier                     |
 | `pnpm type-check`    | Type-check without emitting              |
 | `pnpm test:unit`         | Run unit tests                           |
-| `pnpm test:integration` | Run integration tests (in-memory Postgres) |
-| `pnpm test:e2e`      | Run e2e tests (in-memory Postgres)          |
+| `pnpm test:integration` | Run integration tests (in-memory MongoDB) |
+| `pnpm test:e2e`      | Run e2e tests (in-memory MongoDB)          |
 | `pnpm test:all`      | Run unit + integration + e2e tests       |
 | `pnpm test:coverage` | Run all tests with coverage              |
 

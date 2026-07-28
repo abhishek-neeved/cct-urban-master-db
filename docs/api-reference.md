@@ -42,7 +42,7 @@ includes an `X-Request-Id` header for tracing.
 ### `GET /api/health`
 
 Combined liveness + readiness probe. Reports `ok: 1` when the process is up
-**and** Postgres is reachable, or `ok: -1` when the database is unavailable.
+**and** MongoDB is reachable, or `ok: -1` when the database is unavailable.
 Suitable for both container/orchestrator liveness and readiness probes.
 
 **200** → `{ "success": true, "data": { "ok": 1, "db": "up", "uptime": 12.34 }, "requestId": "…" }`

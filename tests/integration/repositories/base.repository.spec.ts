@@ -1,47 +1,42 @@
-import { eq, sql } from 'drizzle-orm';
-import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
-import { usersTable } from '@nvcct/db-entities';
+import { Schema, model } from 'mongoose';
 import { CreateUserInput } from '@modules/auth/user.types';
 import { UserRepository } from '@modules/auth/user.repository';
 import { BaseRepository } from '@shared/repositories/base.repository';
-import { db } from '@config/database';
 import { ConflictError } from '@utils/errors';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 
 // A minimal concrete repository that does NOT configure a duplicateKeyMessage,
 // used to exercise BaseRepository's default conflict message.
-const widgetsTable = pgTable('widgets', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  sku: text('sku').notNull().unique(),
-});
+interface WidgetRow {
+  _id: unknown;
+  sku: string;
+}
+
+const widgetSchema = new Schema<WidgetRow>({ sku: { type: String, required: true, unique: true } });
+const WidgetModel = model<WidgetRow>('Widget', widgetSchema);
 
 class WidgetRepository extends BaseRepository<
-  typeof widgetsTable,
-  typeof widgetsTable.$inferSelect,
-  { id: string; sku: string }
+  WidgetRow,
+  { id: string; sku: string },
+  { sku: string }
 > {
   constructor() {
-    super(db, widgetsTable, widgetsTable.id, (row) => ({ id: row.id, sku: row.sku }));
+    super(WidgetModel, (row) => ({ id: String(row._id), sku: row.sku }));
   }
 }
 
-// A well-formed uuid that was never inserted, for "missing" assertions.
-const ABSENT_ID = '00000000-0000-4000-8000-000000000000';
+// A well-formed ObjectId that was never inserted, for "missing" assertions.
+const ABSENT_ID = '000000000000000000000000';
 
 // BaseRepository is abstract; its generic CRUD is exercised here through the
-// concrete UserRepository against a real (in-memory) Postgres.
+// concrete UserRepository against a real (in-memory) MongoDB.
 describe('BaseRepository (integration, via UserRepository)', () => {
   let repository: UserRepository;
 
   beforeAll(async () => {
     await connectTestDb();
-    // Not part of @nvcct/db-entities' schema — created directly for this spec.
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS widgets (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        sku text NOT NULL UNIQUE
-      )
-    `);
+    // Not part of the auth module's schema — created directly for this spec.
+    await WidgetModel.init();
   });
   afterEach(clearTestDb);
   afterAll(closeTestDb);
@@ -62,12 +57,10 @@ describe('BaseRepository (integration, via UserRepository)', () => {
 
     it('returns only documents matching the filter (empty when none match)', async () => {
       await make('a@example.com', 'Ada');
-      const matches = await repository.find(eq(usersTable.email, 'a@example.com'));
+      const matches = await repository.find({ email: 'a@example.com' });
       expect(matches).toHaveLength(1);
       expect(matches[0].firstName).toBe('Ada');
-      await expect(repository.find(eq(usersTable.email, 'nobody@example.com'))).resolves.toEqual(
-        []
-      );
+      await expect(repository.find({ email: 'nobody@example.com' })).resolves.toEqual([]);
     });
   });
 
@@ -76,17 +69,15 @@ describe('BaseRepository (integration, via UserRepository)', () => {
       await make('a@example.com');
       await make('b@example.com');
       await expect(repository.count()).resolves.toBe(2);
-      await expect(repository.count(eq(usersTable.email, 'a@example.com'))).resolves.toBe(1);
+      await expect(repository.count({ email: 'a@example.com' })).resolves.toBe(1);
     });
   });
 
   describe('existsBy', () => {
     it('is true when a match exists and false otherwise', async () => {
       await make('a@example.com');
-      await expect(repository.existsBy(eq(usersTable.email, 'a@example.com'))).resolves.toBe(true);
-      await expect(repository.existsBy(eq(usersTable.email, 'nobody@example.com'))).resolves.toBe(
-        false
-      );
+      await expect(repository.existsBy({ email: 'a@example.com' })).resolves.toBe(true);
+      await expect(repository.existsBy({ email: 'nobody@example.com' })).resolves.toBe(false);
     });
   });
 
@@ -97,7 +88,7 @@ describe('BaseRepository (integration, via UserRepository)', () => {
       expect(updated?.firstName).toBe('New Name');
     });
 
-    it('returns null for a non-uuid id', async () => {
+    it('returns null for a non-ObjectId id', async () => {
       await expect(repository.updateById('not-an-id', { firstName: 'x' })).resolves.toBeNull();
     });
 
@@ -113,7 +104,7 @@ describe('BaseRepository (integration, via UserRepository)', () => {
       await expect(repository.findById(user.id)).resolves.toBeNull();
     });
 
-    it('returns false for a non-uuid id', async () => {
+    it('returns false for a non-ObjectId id', async () => {
       await expect(repository.deleteById('not-an-id')).resolves.toBe(false);
     });
 
@@ -124,9 +115,7 @@ describe('BaseRepository (integration, via UserRepository)', () => {
 
   describe('findOne', () => {
     it('returns null when nothing matches', async () => {
-      await expect(
-        repository.findOne(eq(usersTable.email, 'ghost@example.com'))
-      ).resolves.toBeNull();
+      await expect(repository.findOne({ email: 'ghost@example.com' })).resolves.toBeNull();
     });
   });
 
@@ -140,9 +129,8 @@ describe('BaseRepository (integration, via UserRepository)', () => {
     });
 
     it('rethrows non-duplicate persistence errors untouched', async () => {
-      // Missing the required `firstName` column triggers a Postgres NOT NULL
-      // violation (SQLSTATE 23502), which is NOT a duplicate-key error and
-      // must propagate as-is.
+      // Missing the required `firstName` field triggers a Mongoose validation
+      // error, which is NOT a duplicate-key error and must propagate as-is.
       const invalid = {
         lastName: 'Test',
         email: 'incomplete@example.com',

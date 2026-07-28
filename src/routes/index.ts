@@ -18,7 +18,7 @@ export const createApiRouter = (): Router => {
    *   get:
    *     tags: [Health]
    *     summary: Health probe (liveness + readiness combined)
-   *     description: "Returns `ok: 1` when the process is up and Postgres is reachable, otherwise `ok: -1`."
+   *     description: "Returns `ok: 1` when the process is up and MongoDB is reachable, otherwise `ok: -1`."
    *     responses:
    *       200: { description: Healthy (ok = 1) }
    *       503: { description: Unhealthy — database unavailable (ok = -1) }

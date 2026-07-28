@@ -23,7 +23,7 @@ variables in the environment directly.
 | `PORT`                       | positive integer            | `3000`                                         | Port the HTTP server listens on.                                         |
 | `LOG_LEVEL`                  | `error`\|`warn`\|`info`\|`http`\|`debug` | `info`                            | Winston log level.                                                       |
 | `LOG_FORMAT`                 | `json` \| `pretty`          | _(unset)_ → `json` in prod, `pretty` otherwise | Log output format. Set explicitly to override the per-env default.       |
-| `DATABASE_URL`               | non-empty string            | `postgresql://postgres:postgres@127.0.0.1:5432/express_ts_layered` | Postgres connection string (Supabase or self-hosted). Required at runtime (`dev`/`start`); tests use an in-memory Postgres instead. |
+| `DATABASE_URL`               | non-empty string            | `mongodb://127.0.0.1:27017/express_ts_layered` | MongoDB connection string (self-hosted or Atlas). Required at runtime (`dev`/`start`); tests use an in-memory MongoDB instead. |
 | `APP_URL`                    | URL                         | `http://localhost:3000`                        | Base URL used to build links in emails (e.g. the password-reset link) and as the OpenAPI server URL. |
 | `JWT_ACCESS_SECRET`          | non-empty string            | `dev-access-secret-change-me` (dev only)       | Signs access-token JWTs. **In production must be set and ≥ 32 chars** — the dev default is rejected. |
 | `JWT_ACCESS_EXPIRES_IN`      | string (e.g. `15m`, `1h`)   | `15m`                                          | Access-token lifetime (`jsonwebtoken` `expiresIn` format).               |

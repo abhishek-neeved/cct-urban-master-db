@@ -2,7 +2,7 @@ import { UserRepository } from '@modules/auth/user.repository';
 import { hashToken } from '@utils/token.util';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 
-const ABSENT_ID = '00000000-0000-4000-8000-000000000000';
+const ABSENT_ID = '000000000000000000000000';
 
 describe('UserRepository (integration)', () => {
   let repository: UserRepository;

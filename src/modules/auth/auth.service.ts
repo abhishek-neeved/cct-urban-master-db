@@ -50,7 +50,7 @@ const SECOND_MS = 1000;
 /**
  * Standard JWT auth flow: register/login issue a short-lived access token plus
  * a rotating opaque refresh token; password reset uses a single-use hashed
- * token delivered by email. Business logic only — no HTTP, no drizzle-orm.
+ * token delivered by email. Business logic only — no HTTP, no mongoose.
  */
 export class AuthService {
   constructor(

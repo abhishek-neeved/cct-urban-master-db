@@ -5,11 +5,12 @@ Project context for Claude Code. Read this before making changes.
 ## What this is
 
 An **Express + TypeScript** REST API using an **MVC + Service + Repository**
-layered architecture, with **Supabase Postgres via Drizzle ORM** (schema owned
-by the shared [`@nvcct/db-entities`](https://github.com/NVCCT/cdma-db-entities)
-package), JWT auth (access + rotating refresh tokens), Zod validation, Winston
-logging, and Vitest tests. The project is **native ESM** (`"type": "module"`,
-`moduleResolution: bundler`). Full docs live in [`docs/`](./docs/README.md).
+layered architecture, with **MongoDB via Mongoose** (schemas/models owned by
+each feature module, e.g. [`src/modules/auth/auth.model.ts`](./src/modules/auth/auth.model.ts) —
+no shared schema package), JWT auth (access + rotating refresh tokens), Zod
+validation, Winston logging, and Vitest tests. The project is **native ESM**
+(`"type": "module"`, `moduleResolution: bundler`). Full docs live in
+[`docs/`](./docs/README.md).
 
 The current API surface is the **auth** module (`/api/auth/*`): register,
 verify-otp, resend-otp, login, refresh, logout, forgot-password,
@@ -19,7 +20,7 @@ verify-forgot-password-token, reset-password. See
 ## Architecture (respect the layering)
 
 ```
-Middleware → Router → validate() → Controller → Service → Repository → Postgres (Supabase)
+Middleware → Router → validate() → Controller → Service → Repository → MongoDB (Mongoose)
 ```
 
 Dependencies point downward and are wired **per feature module**: each
@@ -34,23 +35,26 @@ Keep each layer's responsibility strict:
   of writing try/catch — it forwards thrown errors to the central error handler.
 - **Validation** — Zod schemas in each module's `*.validator.ts`, enforced by the
   `validate` middleware in routes. Controllers receive already-validated data.
-- **Service** — business rules and invariants. Must NOT touch `req`/`res` or drizzle-orm.
-- **Repository** — the ONLY layer that imports `drizzle-orm`/`@nvcct/db-entities`.
-  Extend `BaseRepository<Table, Row, Domain, CreateInput>`
-  (`@shared/repositories/base.repository`) to inherit generic CRUD (`findById`,
-  `findOne`, `find`, `create`, `updateById`, `deleteById`, `count`, `existsBy`) —
-  it guards uuid ids and maps Postgres unique-violation errors (SQLSTATE `23505`)
-  to `ConflictError`. `findOne`/`find`/`count`/`existsBy` take a Drizzle `SQL`
-  condition (build with `eq`/`and`/`gt` from `drizzle-orm`), not a plain filter
-  object. Add only entity-specific queries. Map rows to the domain type via
-  `to<Entity>()`; Postgres details (raw rows) never leak upward. Not every
-  repository extends `BaseRepository` — `RefreshTokenRepository` queries its
-  table directly, matching its pre-migration shape.
+- **Service** — business rules and invariants. Must NOT touch `req`/`res` or mongoose.
+- **Repository** — the ONLY layer that imports `mongoose`. Each module owns its
+  Mongoose schemas/models in its own `<feature>.model.ts` (e.g.
+  [`src/modules/auth/auth.model.ts`](./src/modules/auth/auth.model.ts)) — models
+  live in the component, not a shared package. Extend
+  `BaseRepository<Row, Domain, CreateInput>` (`@shared/repositories/base.repository`)
+  to inherit generic CRUD (`findById`, `findOne`, `find`, `create`, `updateById`,
+  `deleteById`, `count`, `existsBy`) — it guards ObjectIds and maps duplicate-key
+  errors (Mongo error code `11000`) to `ConflictError`. `findOne`/`find`/`count`/
+  `existsBy` take a Mongoose `FilterQuery`, not a Drizzle condition or a bespoke
+  filter object. Add only entity-specific queries. Map documents to the domain
+  type via `to<Entity>()`; MongoDB details (raw documents, `_id`) never leak
+  upward. Not every repository extends `BaseRepository` — `RefreshTokenRepository`
+  queries its collection directly (hash lookups and atomic find-and-delete don't
+  fit the generic id-keyed CRUD surface).
 
 ## Folder layout (feature-first)
 
-Everything for a feature lives together under `src/modules/<feature>/` (types,
-repository, service, validator, controller, routes). Cross-cutting code lives
+Everything for a feature lives together under `src/modules/<feature>/` (model,
+types, repository, service, validator, controller, routes). Cross-cutting code lives
 under `src/shared/` (`config/`, `middleware/`, `utils/`, `models/`, `services/`,
 `docs/`, `types/`). `src/routes/index.ts` mounts the module routers.
 
@@ -91,7 +95,7 @@ the `/scaffold-module` command does this automatically.
 - **Async controllers** — wrap handlers in `asyncHandler`; never write try/catch
   in a controller just to call `next(err)`.
 - **Validation** — every route with a body/query/param goes through
-  `validate({...})`. Validate uuid params, not just bodies.
+  `validate({...})`. Validate ObjectId params, not just bodies.
 - **Secrets & passwords** — never log or return the password hash; hash with
   bcrypt (`@utils/password.util`). Store only the SHA-256 hash of refresh and
   reset tokens, never the raw value.
@@ -122,25 +126,19 @@ suite), `/scaffold-module <Name>` (new resource module).
 
 Before considering a change complete, run `/check` (or manually:
 `pnpm type-check`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`). For changes touching
-the data layer or endpoints, run `pnpm test:all`. Tests use an in-memory Postgres
-(`@electric-sql/pglite`) — no local database required. CI (GitHub Actions) runs
+the data layer or endpoints, run `pnpm test:all`. Tests use an in-memory MongoDB
+(`mongodb-memory-server`) — no local database required. CI (GitHub Actions) runs
 the same checks plus a security workflow (CodeQL, dependency review, `pnpm audit`).
 
 ## Notes / gotchas
 
-- Tests need no local Postgres; `tests/helpers/db.ts` spins up an in-memory
-  `@electric-sql/pglite` instance per test file and pushes `@nvcct/db-entities`'
-  schema plus its hand-authored trigger migration into it (not the Supabase-only
-  `pg_cron` one).
-- `pnpm dev` / `pnpm start` DO need a real Postgres at `DATABASE_URL`, with
-  `@nvcct/db-entities`' migrations already applied (see
-  [docs/getting-started.md](./docs/getting-started.md)).
+- Tests need no local MongoDB; `tests/helpers/db.ts` spins up an in-memory
+  MongoDB instance (`mongodb-memory-server`) per test file and connects
+  Mongoose to it.
+- `pnpm dev` / `pnpm start` DO need a real MongoDB reachable at `DATABASE_URL`
+  (see [docs/getting-started.md](./docs/getting-started.md)) — there's no
+  separate migration step; Mongoose creates collections/indexes on first use.
 - Husky hooks require a git repo (`git init`). pre-commit runs lint-staged;
   pre-push runs type-check + unit tests.
 - A `PostToolUse` hook auto-formats edited `.ts` files with Prettier
   (`.claude/hooks/format.mjs`), so don't worry about hand-formatting.
-- `@nvcct/db-entities` is a private GitHub Packages dependency — installing it
-  requires a PAT with `read:packages` in `~/.npmrc` locally, and the
-  `PACKAGES_READ_TOKEN` repo secret in CI (see `.npmrc` and
-  `.github/actions/setup`). Never pin it back to a local `file:../db-entities`
-  path on a shared branch — CI only checks out this repo, not a sibling one.

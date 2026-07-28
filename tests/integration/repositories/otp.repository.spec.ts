@@ -72,8 +72,12 @@ describe('OtpRepository (integration)', () => {
   });
 
   it('returns 0 when recording an attempt against a non-existent OTP', async () => {
-    const ABSENT_ID = '00000000-0000-4000-8000-000000000000';
+    const ABSENT_ID = '000000000000000000000000';
     await expect(repository.recordFailedAttempt(ABSENT_ID)).resolves.toBe(0);
+  });
+
+  it('returns 0 for a non-ObjectId OTP id without querying the database', async () => {
+    await expect(repository.recordFailedAttempt('not-an-id')).resolves.toBe(0);
   });
 
   it('deletes every OTP for a user', async () => {

@@ -11,9 +11,12 @@ allowBuilds:
   # swagger-ui-dist's postinstall telemetry pinger — not needed, deny it.
   '@scarf/scarf': false
   esbuild: true
+  # Downloads the mongod binary used by tests/helpers/db.ts's in-memory MongoDB.
+  mongodb-memory-server: true
 
 # Newly published versions are held back for a day by default (supply-chain
-# protection). @nvcct/* is our own internal package published by this org, so
-# exempt it — its releases aren't third-party supply-chain risk.
+# protection). mongoose@8.24.2 is pinned specifically to pull in a fix for a
+# high-severity advisory (GHSA-wpg9-53fq-2r8h) — exempt it so the fix isn't
+# delayed a day behind its release.
 minimumReleaseAgeExclude:
-  - '@nvcct/*'
+  - mongoose@8.24.2

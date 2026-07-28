@@ -1,4 +1,4 @@
-import type { UserRow } from '@nvcct/db-entities';
+import type { UserRow } from './auth.model';
 
 /** Domain representation returned to callers — never includes the password. */
 export interface User {
@@ -22,14 +22,14 @@ export interface CreateUserInput {
   password: string;
 }
 
-/** The columns `toUser` needs — satisfied by a full `UserRow` or a `publicUserColumns` partial select. */
+/** The fields `toUser` needs — satisfied by a full `UserRow`. */
 type PublicUserRow = Pick<
   UserRow,
-  'id' | 'firstName' | 'lastName' | 'email' | 'isVerified' | 'createdAt' | 'updatedAt'
+  '_id' | 'firstName' | 'lastName' | 'email' | 'isVerified' | 'createdAt' | 'updatedAt'
 >;
 
 export const toUser = (row: PublicUserRow): User => ({
-  id: row.id,
+  id: String(row._id),
   firstName: row.firstName,
   lastName: row.lastName,
   email: row.email,

@@ -1,6 +1,4 @@
-import { and, eq, gt } from 'drizzle-orm';
-import { publicUserColumns, usersTable, type UserRow } from '@nvcct/db-entities';
-import { db } from '@shared/config/database';
+import { UserModel, type UserRow } from './auth.model';
 import { BaseRepository } from '@shared/repositories/base.repository';
 import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.types';
 
@@ -16,65 +14,52 @@ export interface IUserRepository {
 }
 
 /**
- * Postgres-backed user store. Inherits generic CRUD (`findById`, `create`, ...)
+ * MongoDB-backed user store. Inherits generic CRUD (`findById`, `create`, ...)
  * from `BaseRepository`; adds the auth-specific, password-aware lookups. The
  * domain `User` never exposes the password — that is offered only via the
  * explicit password-aware lookup below.
  */
 export class UserRepository
-  extends BaseRepository<typeof usersTable, UserRow, User, CreateUserInput>
+  extends BaseRepository<UserRow, User, CreateUserInput>
   implements IUserRepository
 {
   constructor() {
-    super(db, usersTable, usersTable.id, toUser, {
+    super(UserModel, toUser, {
       duplicateKeyMessage: 'A user with this email already exists',
     });
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    // Postgres has no column-level `select: false`; select the explicit safe
-    // column list instead of every column.
-    const [row] = await this.db
-      .select(publicUserColumns)
-      .from(usersTable)
-      .where(eq(usersTable.email, email.toLowerCase()))
-      .limit(1);
-    return row ? toUser(row) : null;
+    return this.findOne({ email: email.toLowerCase() });
   }
 
   async findByEmailWithPassword(email: string): Promise<UserWithPassword | null> {
-    const [row] = await this.db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.email, email.toLowerCase()))
-      .limit(1);
+    const row = await UserModel.findOne({ email: email.toLowerCase() }).lean<UserRow>();
     return row ? toUserWithPassword(row) : null;
   }
 
   async setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
-    await this.db
-      .update(usersTable)
-      .set({ passwordResetToken: tokenHash, passwordResetExpires: expiresAt })
-      .where(eq(usersTable.id, userId));
-  }
-
-  async findByValidResetToken(tokenHash: string): Promise<User | null> {
-    return this.findOne(
-      and(
-        eq(usersTable.passwordResetToken, tokenHash),
-        gt(usersTable.passwordResetExpires, new Date())
-      )!
+    await UserModel.updateOne(
+      { _id: userId },
+      { passwordResetToken: tokenHash, passwordResetExpires: expiresAt }
     );
   }
 
+  async findByValidResetToken(tokenHash: string): Promise<User | null> {
+    return this.findOne({
+      passwordResetToken: tokenHash,
+      passwordResetExpires: { $gt: new Date() },
+    });
+  }
+
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    await this.db
-      .update(usersTable)
-      .set({ password: passwordHash, passwordResetToken: null, passwordResetExpires: null })
-      .where(eq(usersTable.id, userId));
+    await UserModel.updateOne(
+      { _id: userId },
+      { password: passwordHash, passwordResetToken: null, passwordResetExpires: null }
+    );
   }
 
   async markVerified(userId: string): Promise<void> {
-    await this.db.update(usersTable).set({ isVerified: true }).where(eq(usersTable.id, userId));
+    await UserModel.updateOne({ _id: userId }, { isVerified: true });
   }
 }

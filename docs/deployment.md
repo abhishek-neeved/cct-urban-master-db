@@ -33,7 +33,7 @@ refuses to boot otherwise.
 docker run -d --name cdma-master-db \
   -p 3000:3000 \
   -e NODE_ENV=production \
-  -e DATABASE_URL="postgresql://<user>:<password>@<host>:5432/<db>" \
+  -e DATABASE_URL="mongodb+srv://<user>:<password>@<host>/<db>" \
   -e JWT_ACCESS_SECRET="$(openssl rand -hex 32)" \
   -e CORS_ORIGINS="https://app.example.com" \
   -e APP_URL="https://api.example.com" \
@@ -46,14 +46,14 @@ docker run -d --name cdma-master-db \
 ## Health check
 
 The image declares a `HEALTHCHECK` that polls the combined health probe
-(`GET /api/health`), so the container is only reported healthy once Postgres is
+(`GET /api/health`), so the container is only reported healthy once MongoDB is
 reachable (`ok: 1`). Point both your orchestrator's liveness and readiness
 probes at `GET /api/health` (see the [API Reference](./api-reference.md#health)).
 
 ## Graceful shutdown
 
 [`server.ts`](../src/server.ts) traps `SIGTERM`/`SIGINT`, stops accepting new
-connections, closes the Postgres connection, then exits `0`. Orchestrators that
+connections, closes the MongoDB connection, then exits `0`. Orchestrators that
 send `SIGTERM` (Docker, Kubernetes) get a clean drain. Unhandled promise
 rejections are logged rather than crashing the process.
 
@@ -62,8 +62,8 @@ rejections are logged rather than crashing the process.
 - [ ] `NODE_ENV=production`
 - [ ] `JWT_ACCESS_SECRET` set to a strong secret (≥ 32 chars, not the dev default)
 - [ ] `CORS_ORIGINS` lists your real front-end origin(s)
-- [ ] `DATABASE_URL` points at your production database, with `@nvcct/db-entities`'
-      migrations applied (see [Getting Started](./getting-started.md#3-start-postgres-and-apply-the-schema))
+- [ ] `DATABASE_URL` points at your production MongoDB (see
+      [Getting Started](./getting-started.md#3-start-mongodb))
 - [ ] `APP_URL` set to the public API URL (used in reset-password email links)
 - [ ] A real email transport wired in place of the dev `LoggerEmailService`
       (see [`src/shared/services/email.service.ts`](../src/shared/services/email.service.ts))

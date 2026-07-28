@@ -8,7 +8,7 @@ Run the complete verification pipeline and report a clear pass/fail summary:
 1. `pnpm type-check`
 2. `pnpm lint`
 3. `pnpm knip` (unused files / exports / dependencies)
-4. `pnpm test:all` (unit + integration + e2e on an in-memory Postgres via `@electric-sql/pglite`)
+4. `pnpm test:all` (unit + integration + e2e on an in-memory MongoDB via `mongodb-memory-server`)
 
 If anything fails, surface the failing test names and the relevant output, and
 propose a fix. Otherwise confirm everything is green.
