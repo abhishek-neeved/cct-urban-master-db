@@ -62,6 +62,24 @@ long-lived **refresh token** (opaque; only its hash is stored server-side).
 > Exceeding the limit returns **429**. The limiter is disabled under
 > `NODE_ENV=test`.
 
+> **Login lockout:** on top of the per-IP limiter above, wrong passwords are
+> also tracked **per email** (not per account) — including emails that aren't
+> registered at all, so lockout behavior can never be used to tell a real
+> email apart from a made-up one. After 5 consecutive wrong passwords that
+> email is locked for `LOGIN_LOCKOUT_MINUTES` (default 15) — a locked login
+> gets the same generic **401** as a wrong password, with nothing disclosed
+> about the lock or whether the email is registered.
+
+> **Refresh token theft detection:** rotating a refresh token doesn't delete it
+> outright — it's marked used and kept until it expires. If an already-rotated
+> token is ever presented again (a signal it was copied before rotation), every
+> token issued from that login is revoked immediately, so both the legitimate
+> client and any attacker holding a copy must log in again. A replay within a
+> short grace window (~1s) of the rotation is instead treated as a benign race
+> (e.g. two requests firing close together) and just gets a plain 401, without
+> revoking anything — so a client that double-submits a refresh occasionally
+> isn't logged out for it.
+
 > **Email verification:** a new account is created unverified (`isVerified:
 > false`). Registration emails a **6-digit OTP** (valid for `OTP_TTL_MINUTES`,
 > default 10). The account must be verified via `POST /api/auth/verify-otp`
@@ -165,8 +183,9 @@ code was actually issued (not on a no-op).
 **200** → same shape as register (`user` + `accessToken` + `refreshToken`),
 **and** sets the `accessToken`/`refreshToken` httpOnly cookies.
 
-**Errors:** `401` invalid email or password · `403` account not verified ·
-`422` invalid body
+**Errors:** `401` invalid email or password, **or** the account is temporarily
+locked out (same message either way — see "Login lockout" above) · `403`
+account not verified · `422` invalid body
 
 ### `POST /api/auth/refresh`
 
@@ -174,12 +193,17 @@ Exchange a valid refresh token for a new pair. The presented refresh token is
 **rotated** (single-use) — the old one stops working. Reads the refresh token
 from the `refreshToken` cookie if present, otherwise from the body.
 
+If the presented token has *already* been rotated out (replay — see
+"Refresh token theft detection" above), every token from that login is
+revoked and the caller gets the same 401 as any other invalid token.
+
 **Body:** `refreshToken` (optional if the cookie is present)
 
 **200** → `{ "accessToken": "<jwt>", "refreshToken": "<opaque>" }`, and re-sets
 the rotated httpOnly cookies.
 
-**Errors:** `401` invalid/expired refresh token, or missing from both cookie and body
+**Errors:** `401` invalid/expired refresh token, a replayed (already-rotated)
+token, or missing from both cookie and body
 
 ### `POST /api/auth/logout`
 

@@ -1,6 +1,11 @@
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
-import { UserModel, OtpModel, RefreshTokenModel } from '@modules/auth/auth.model';
+import {
+  UserModel,
+  OtpModel,
+  RefreshTokenModel,
+  LoginAttemptModel,
+} from '@modules/auth/auth.model';
 
 let mongod: MongoMemoryServer | null = null;
 
@@ -11,7 +16,12 @@ export const connectTestDb = async (): Promise<void> => {
   // Build unique indexes up front so duplicate-key assertions are reliable
   // from the very first test (Mongoose otherwise builds them in the
   // background after connecting).
-  await Promise.all([UserModel.init(), OtpModel.init(), RefreshTokenModel.init()]);
+  await Promise.all([
+    UserModel.init(),
+    OtpModel.init(),
+    RefreshTokenModel.init(),
+    LoginAttemptModel.init(),
+  ]);
 };
 
 /** Wipe every collection between tests so each case starts clean. */
@@ -19,6 +29,7 @@ export const clearTestDb = async (): Promise<void> => {
   await RefreshTokenModel.deleteMany({});
   await OtpModel.deleteMany({});
   await UserModel.deleteMany({});
+  await LoginAttemptModel.deleteMany({});
 };
 
 /** Tear down the connection. */

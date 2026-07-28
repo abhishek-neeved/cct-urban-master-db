@@ -5,6 +5,7 @@ import { LoggerEmailService } from '@shared/services/email.service';
 import { UserRepository } from './user.repository';
 import { RefreshTokenRepository } from './refresh-token.repository';
 import { OtpRepository } from './otp.repository';
+import { LoginAttemptRepository } from './login-attempt.repository';
 import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
 import { authLimiter } from '@middleware/rate-limit';
@@ -28,8 +29,9 @@ export const createAuthModule = (): Router => {
   const users = new UserRepository();
   const refreshTokens = new RefreshTokenRepository();
   const otps = new OtpRepository();
+  const loginAttempts = new LoginAttemptRepository();
   const emailService = new LoggerEmailService();
-  const authService = new AuthService(users, refreshTokens, otps, emailService);
+  const authService = new AuthService(users, refreshTokens, otps, loginAttempts, emailService);
   const controller = new AuthController(authService);
 
   const router = Router();

@@ -23,6 +23,25 @@ export const OTP_LENGTH = 6;
  */
 export const OTP_MAX_ATTEMPTS = 5;
 
+/**
+ * Wrong-password attempts allowed against a single account before it is
+ * temporarily locked. Blunts distributed brute-force against one account that
+ * per-IP rate limiting (`@middleware/rate-limit`) wouldn't catch on its own.
+ */
+export const LOGIN_MAX_ATTEMPTS = 5;
+
+/**
+ * Grace window (ms) after a refresh token is rotated during which presenting
+ * the old token again is treated as a benign race (e.g. two requests firing
+ * near-simultaneously — a double-tab refresh, a retried network call) rather
+ * than a theft replay. At the storage layer both look identical (the old
+ * token is already marked used) — time since rotation is the only signal that
+ * tells them apart. A replay presented after this window has elapsed is
+ * treated as reuse and revokes the whole refresh-token family (see
+ * `refresh-token.repository`'s `rotate`).
+ */
+export const REFRESH_TOKEN_REUSE_GRACE_MS = 1000;
+
 /** Default values applied when an environment variable is unset. */
 export const ENV_DEFAULTS = {
   NODE_ENV: 'development',
@@ -35,6 +54,7 @@ export const ENV_DEFAULTS = {
   PASSWORD_RESET_TTL_MINUTES: 60,
   OTP_TTL_MINUTES: 10,
   OTP_RESEND_COOLDOWN_SECONDS: 60,
+  LOGIN_LOCKOUT_MINUTES: 15,
 } as const;
 
 /** Recognised deployment environments. */

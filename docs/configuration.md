@@ -32,6 +32,7 @@ variables in the environment directly.
 | `PASSWORD_RESET_TTL_MINUTES` | positive integer            | `60`                                           | How long a password-reset token stays valid.                            |
 | `OTP_TTL_MINUTES`            | positive integer            | `10`                                           | How long an account-verification OTP stays valid.                        |
 | `OTP_RESEND_COOLDOWN_SECONDS`| positive integer            | `60`                                           | Minimum wait between OTP resends (silent no-op within the window).       |
+| `LOGIN_LOCKOUT_MINUTES`      | positive integer            | `15`                                           | How long an email stays locked out of login after `LOGIN_MAX_ATTEMPTS` (5, not env-configurable) consecutive wrong passwords. |
 | `CORS_ORIGINS`               | comma-separated origins     | _(unset)_                                      | Allowlist of origins. Empty in dev reflects any origin; **required (non-empty) in production**. |
 
 ## Production-only rules
@@ -57,6 +58,19 @@ the boot** if violated:
   in production it is only emailed.
 - **Rate limiting** — the credential-endpoint limiter is skipped entirely when
   `NODE_ENV=test` so the test suite isn't throttled.
+- **Login lockout** — in addition to the per-IP rate limiter, wrong passwords
+  are tracked **per email** (not per account) in a dedicated collection,
+  written to identically whether or not that email is registered; after
+  `LOGIN_MAX_ATTEMPTS` (5) the email is locked for `LOGIN_LOCKOUT_MINUTES`. A
+  locked login gets the same generic "Invalid email or password" response as a
+  wrong password — the lock is never disclosed, and tracking a nonexistent
+  email exactly like a real one closes the enumeration side-channel that a
+  per-account-only counter would otherwise open (real accounts would rack up
+  extra writes and eventually lock; made-up ones never would).
+- **Refresh-token reuse detection** — rotating a refresh token doesn't delete
+  it outright; replaying an already-rotated-out token is treated as a token-theft
+  signal and immediately revokes every token issued from that login, forcing a
+  fresh login on both the legitimate client and any attacker holding a copy.
 
 See [Getting Started](./getting-started.md) for install/run steps and
 [Deployment](./deployment.md) for the production checklist.

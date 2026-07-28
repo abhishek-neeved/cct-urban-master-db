@@ -21,6 +21,7 @@ at the data-access boundary.
 - 🪝 **Husky + lint-staged** git hooks (pre-commit lint/format, pre-push type-check + tests)
 - ✅ **Vitest** unit, integration, and **Supertest** e2e tests (integration/e2e run on an in-memory MongoDB, `mongodb-memory-server`)
 - 🔒 Centralised error handling, Helmet + CORS
+- 🚨 **Auth hardening** — per-email login lockout after repeated wrong passwords, tracked identically for unregistered emails so lockout can't be used to enumerate accounts (on top of per-IP rate limiting), and refresh-token rotation with automatic reuse (theft) detection that revokes the whole session
 
 ## Architecture
 

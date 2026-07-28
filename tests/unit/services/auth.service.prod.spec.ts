@@ -2,6 +2,7 @@ import { vi, type Mocked } from 'vitest';
 import type { IUserRepository } from '@modules/auth/user.repository';
 import type { IRefreshTokenRepository } from '@modules/auth/refresh-token.repository';
 import type { IOtpRepository } from '@modules/auth/otp.repository';
+import type { ILoginAttemptRepository } from '@modules/auth/login-attempt.repository';
 import type { IEmailService } from '@shared/services/email.service';
 
 // In production the flows that mint a raw secret (reset token, verification OTP)
@@ -41,12 +42,13 @@ describe('AuthService (production)', () => {
     } as unknown as Mocked<IUserRepository>;
     const refreshTokens = {} as Mocked<IRefreshTokenRepository>;
     const otps = {} as Mocked<IOtpRepository>;
+    const loginAttempts = {} as Mocked<ILoginAttemptRepository>;
     const email = {
       sendPasswordResetEmail: vi.fn(),
       sendOtpEmail: vi.fn(),
     } as unknown as Mocked<IEmailService>;
 
-    const service = new AuthService(users, refreshTokens, otps, email);
+    const service = new AuthService(users, refreshTokens, otps, loginAttempts, email);
     const token = await service.forgotPassword('jane.doe@example.com');
 
     expect(token).toBeUndefined();
@@ -62,12 +64,13 @@ describe('AuthService (production)', () => {
     } as unknown as Mocked<IUserRepository>;
     const refreshTokens = {} as Mocked<IRefreshTokenRepository>;
     const otps = { replaceForUser: vi.fn() } as unknown as Mocked<IOtpRepository>;
+    const loginAttempts = {} as Mocked<ILoginAttemptRepository>;
     const email = {
       sendPasswordResetEmail: vi.fn(),
       sendOtpEmail: vi.fn(),
     } as unknown as Mocked<IEmailService>;
 
-    const service = new AuthService(users, refreshTokens, otps, email);
+    const service = new AuthService(users, refreshTokens, otps, loginAttempts, email);
     const result = await service.register({
       firstName: 'Jane',
       lastName: 'Doe',
@@ -90,12 +93,13 @@ describe('AuthService (production)', () => {
       findActiveForUser: vi.fn().mockResolvedValue(null),
       replaceForUser: vi.fn(),
     } as unknown as Mocked<IOtpRepository>;
+    const loginAttempts = {} as Mocked<ILoginAttemptRepository>;
     const email = {
       sendPasswordResetEmail: vi.fn(),
       sendOtpEmail: vi.fn(),
     } as unknown as Mocked<IEmailService>;
 
-    const service = new AuthService(users, refreshTokens, otps, email);
+    const service = new AuthService(users, refreshTokens, otps, loginAttempts, email);
     const code = await service.resendOtp('jane.doe@example.com');
 
     expect(code).toBeUndefined();

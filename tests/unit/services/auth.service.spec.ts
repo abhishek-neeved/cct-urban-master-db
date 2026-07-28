@@ -3,11 +3,12 @@ import { AuthService } from '@modules/auth/auth.service';
 import { IUserRepository } from '@modules/auth/user.repository';
 import { IRefreshTokenRepository } from '@modules/auth/refresh-token.repository';
 import { IOtpRepository, OtpRecord } from '@modules/auth/otp.repository';
+import { ILoginAttemptRepository } from '@modules/auth/login-attempt.repository';
 import { IEmailService } from '@shared/services/email.service';
 import { BadRequestError, ConflictError, ForbiddenError, UnauthorizedError } from '@utils/errors';
 import { hashPassword } from '@utils/password.util';
 import { hashToken } from '@utils/token.util';
-import { OTP_MAX_ATTEMPTS } from '@config/constants';
+import { LOGIN_MAX_ATTEMPTS, OTP_MAX_ATTEMPTS } from '@config/constants';
 import { User, UserWithPassword } from '@modules/auth/user.types';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
@@ -33,6 +34,7 @@ describe('AuthService', () => {
   let users: Mocked<IUserRepository>;
   let refreshTokens: Mocked<IRefreshTokenRepository>;
   let otps: Mocked<IOtpRepository>;
+  let loginAttempts: Mocked<ILoginAttemptRepository>;
   let email: Mocked<IEmailService>;
   let service: AuthService;
 
@@ -49,8 +51,7 @@ describe('AuthService', () => {
     };
     refreshTokens = {
       create: vi.fn(),
-      findUserIdByValidHash: vi.fn(),
-      consumeByValidHash: vi.fn(),
+      rotate: vi.fn(),
       deleteByHash: vi.fn(),
       deleteAllForUser: vi.fn(),
     };
@@ -60,8 +61,14 @@ describe('AuthService', () => {
       recordFailedAttempt: vi.fn(),
       deleteForUser: vi.fn(),
     };
+    loginAttempts = {
+      find: vi.fn().mockResolvedValue(null),
+      recordFailedAttempt: vi.fn(),
+      lock: vi.fn(),
+      reset: vi.fn(),
+    };
     email = { sendPasswordResetEmail: vi.fn(), sendOtpEmail: vi.fn() };
-    service = new AuthService(users, refreshTokens, otps, email);
+    service = new AuthService(users, refreshTokens, otps, loginAttempts, email);
   });
 
   describe('register', () => {
@@ -240,13 +247,55 @@ describe('AuthService', () => {
       expect(result.tokens.accessToken).toEqual(expect.any(String));
       expect(result.user).not.toHaveProperty('password');
       expect(result.user.email).toBe(record.email);
+      // A clean login clears any prior failed-attempt count for this email.
+      expect(loginAttempts.reset).toHaveBeenCalledWith(record.email);
     });
 
-    it('throws UnauthorizedError on wrong password', async () => {
+    it('throws UnauthorizedError on wrong password and records the failed attempt against the email', async () => {
       users.findByEmailWithPassword.mockResolvedValue(record);
+      loginAttempts.recordFailedAttempt.mockResolvedValue(1);
+
       await expect(
         service.login({ email: record.email, password: 'wrong-password' })
       ).rejects.toBeInstanceOf(UnauthorizedError);
+      expect(loginAttempts.recordFailedAttempt).toHaveBeenCalledWith(record.email);
+      expect(loginAttempts.lock).not.toHaveBeenCalled();
+    });
+
+    it('locks the email once wrong-password attempts reach the cap', async () => {
+      users.findByEmailWithPassword.mockResolvedValue(record);
+      loginAttempts.recordFailedAttempt.mockResolvedValue(LOGIN_MAX_ATTEMPTS);
+
+      await expect(
+        service.login({ email: record.email, password: 'wrong-password' })
+      ).rejects.toBeInstanceOf(UnauthorizedError);
+      expect(loginAttempts.lock).toHaveBeenCalledWith(record.email, expect.any(Date));
+    });
+
+    it('rejects a correct password with the same generic error while the email is locked', async () => {
+      users.findByEmailWithPassword.mockResolvedValue(record);
+      loginAttempts.find.mockResolvedValue({
+        attempts: LOGIN_MAX_ATTEMPTS,
+        lockedUntil: new Date(Date.now() + 60_000),
+      });
+
+      await expect(service.login({ email: record.email, password })).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+      // Locked out — no further attempt is recorded and no session is issued.
+      expect(loginAttempts.recordFailedAttempt).not.toHaveBeenCalled();
+      expect(refreshTokens.create).not.toHaveBeenCalled();
+    });
+
+    it('allows login again once the lock has expired', async () => {
+      users.findByEmailWithPassword.mockResolvedValue(record);
+      loginAttempts.find.mockResolvedValue({
+        attempts: LOGIN_MAX_ATTEMPTS,
+        lockedUntil: new Date(Date.now() - 60_000),
+      });
+
+      const result = await service.login({ email: record.email, password });
+      expect(result.tokens.accessToken).toEqual(expect.any(String));
     });
 
     it('throws UnauthorizedError when the user does not exist', async () => {
@@ -254,6 +303,41 @@ describe('AuthService', () => {
       await expect(service.login({ email: 'nobody@example.com', password })).rejects.toBeInstanceOf(
         UnauthorizedError
       );
+    });
+
+    it('records a failed attempt against a nonexistent email exactly as it would a wrong password', async () => {
+      users.findByEmailWithPassword.mockResolvedValue(null);
+      loginAttempts.recordFailedAttempt.mockResolvedValue(1);
+
+      await expect(service.login({ email: 'nobody@example.com', password })).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+      // Same code path as a wrong password against a real account — this is
+      // what keeps lockout behavior from leaking which emails are registered.
+      expect(loginAttempts.recordFailedAttempt).toHaveBeenCalledWith('nobody@example.com');
+    });
+
+    it('locks a nonexistent email the same way as a real account once attempts reach the cap', async () => {
+      users.findByEmailWithPassword.mockResolvedValue(null);
+      loginAttempts.recordFailedAttempt.mockResolvedValue(LOGIN_MAX_ATTEMPTS);
+
+      await expect(service.login({ email: 'nobody@example.com', password })).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+      expect(loginAttempts.lock).toHaveBeenCalledWith('nobody@example.com', expect.any(Date));
+    });
+
+    it('rejects with the same generic error whether a locked email is registered or not', async () => {
+      loginAttempts.find.mockResolvedValue({
+        attempts: LOGIN_MAX_ATTEMPTS,
+        lockedUntil: new Date(Date.now() + 60_000),
+      });
+      users.findByEmailWithPassword.mockResolvedValue(null);
+
+      await expect(service.login({ email: 'nobody@example.com', password })).rejects.toBeInstanceOf(
+        UnauthorizedError
+      );
+      expect(loginAttempts.recordFailedAttempt).not.toHaveBeenCalled();
     });
 
     it('throws ForbiddenError for a correct password on an unverified account', async () => {
@@ -267,20 +351,32 @@ describe('AuthService', () => {
   });
 
   describe('refresh', () => {
-    it('atomically consumes the token and issues new ones when valid', async () => {
-      refreshTokens.consumeByValidHash.mockResolvedValue('507f1f77bcf86cd799439011');
+    it('atomically rotates the token and issues new ones when valid', async () => {
+      refreshTokens.rotate.mockResolvedValue({
+        status: 'rotated',
+        userId: '507f1f77bcf86cd799439011',
+      });
 
       const tokens = await service.refresh('some-refresh-token');
 
-      expect(refreshTokens.consumeByValidHash).toHaveBeenCalledTimes(1); // old one consumed
-      expect(refreshTokens.create).toHaveBeenCalledTimes(1); // new one stored
+      expect(refreshTokens.rotate).toHaveBeenCalledTimes(1);
       expect(tokens.accessToken).toEqual(expect.any(String));
+      expect(tokens.refreshToken).toEqual(expect.any(String));
     });
 
-    it('throws UnauthorizedError for an invalid/expired/already-consumed token', async () => {
-      refreshTokens.consumeByValidHash.mockResolvedValue(null);
+    it('throws UnauthorizedError for an invalid/expired token', async () => {
+      refreshTokens.rotate.mockResolvedValue({ status: 'invalid' });
       await expect(service.refresh('bad')).rejects.toBeInstanceOf(UnauthorizedError);
-      expect(refreshTokens.create).not.toHaveBeenCalled();
+    });
+
+    it('throws UnauthorizedError and logs a warning when a rotated-out token is replayed', async () => {
+      refreshTokens.rotate.mockResolvedValue({
+        status: 'reused',
+        userId: '507f1f77bcf86cd799439011',
+      });
+      // The repository has already revoked the whole family by the time
+      // `rotate` resolves — the service just needs to reject the caller.
+      await expect(service.refresh('stolen-token')).rejects.toBeInstanceOf(UnauthorizedError);
     });
   });
 
@@ -324,6 +420,7 @@ describe('AuthService', () => {
       await service.resetPassword('good-token', 'brand-new-password');
 
       expect(users.updatePassword).toHaveBeenCalledTimes(1);
+      expect(loginAttempts.reset).toHaveBeenCalledWith(user.email);
       expect(refreshTokens.deleteAllForUser).toHaveBeenCalledWith(user.id);
     });
 

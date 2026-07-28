@@ -1,7 +1,14 @@
 import request from 'supertest';
 import { Application } from 'express';
 import { createApp } from '@/app';
+import { REFRESH_TOKEN_REUSE_GRACE_MS } from '@config/constants';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
+
+// A replay within this window reads as a benign race (two requests firing
+// close together), not reuse — see `refresh-token.repository`'s `rotate`.
+// Testing genuine reuse detection means replaying after it has elapsed.
+const sleepPastReuseGrace = () =>
+  new Promise((resolve) => setTimeout(resolve, REFRESH_TOKEN_REUSE_GRACE_MS + 100));
 
 const credentials = {
   firstName: 'Ada',
@@ -167,6 +174,64 @@ describe('Auth API (e2e)', () => {
     const statuses = [a.status, b.status].sort();
     // Atomic rotation: exactly one wins (200), the other is rejected (401).
     expect(statuses).toEqual([200, 401]);
+  });
+
+  it('revokes the entire session when a rotated-out refresh token is replayed', async () => {
+    await registerAndVerify();
+    const { body } = await login();
+    const { refreshToken } = body.data;
+
+    // Legitimate rotation.
+    const rotated = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(rotated.status).toBe(200);
+    const newRefreshToken = rotated.body.data.refreshToken;
+
+    // The old token is replayed (e.g. by an attacker who copied it before
+    // rotation) well after the grace window, so it reads as theft rather than
+    // a benign race — this must burn the whole session, not just this request.
+    await sleepPastReuseGrace();
+    const replay = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(replay.status).toBe(401);
+
+    // The token issued by the legitimate rotation is now also dead.
+    const afterReuse = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: newRefreshToken });
+    expect(afterReuse.status).toBe(401);
+  });
+
+  it('locks the account after too many wrong passwords, until it expires', async () => {
+    await registerAndVerify();
+
+    for (let i = 0; i < 5; i++) {
+      await request(app)
+        .post('/api/auth/login')
+        .send({ email: credentials.email, password: 'wrong-password' })
+        .expect(401);
+    }
+
+    // Cap reached — even the correct password is now rejected, with the same
+    // generic message (no "account locked" disclosure).
+    const lockedOut = await login();
+    expect(lockedOut.status).toBe(401);
+  });
+
+  it('locks out a nonexistent email the same way as a real account (no enumeration via lockout)', async () => {
+    // Lockout is tracked per email, not per account — so hammering an email
+    // that was never registered must behave exactly like hammering a real
+    // one: same status, same message, every time.
+    const responses = [];
+    for (let i = 0; i < 6; i++) {
+      responses.push(
+        await request(app)
+          .post('/api/auth/login')
+          .send({ email: 'never-registered@example.com', password: 'whatever-password' })
+      );
+    }
+    for (const res of responses) {
+      expect(res.status).toBe(401);
+      expect(res.body.error.message).toBe('Invalid email or password');
+    }
   });
 
   it('logs out so the refresh token can no longer be used', async () => {

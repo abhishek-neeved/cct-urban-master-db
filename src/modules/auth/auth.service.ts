@@ -1,9 +1,10 @@
 import { env, isProduction } from '@config/env';
-import { OTP_MAX_ATTEMPTS } from '@config/constants';
+import { LOGIN_MAX_ATTEMPTS, OTP_MAX_ATTEMPTS } from '@config/constants';
 import { User } from './user.types';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
 import { IOtpRepository } from './otp.repository';
+import { ILoginAttemptRepository } from './login-attempt.repository';
 import { IEmailService } from '@shared/services/email.service';
 import { comparePassword, getDummyPasswordHash, hashPassword } from '@utils/password.util';
 import {
@@ -57,6 +58,7 @@ export class AuthService {
     private readonly users: IUserRepository,
     private readonly refreshTokens: IRefreshTokenRepository,
     private readonly otps: IOtpRepository,
+    private readonly loginAttempts: ILoginAttemptRepository,
     private readonly email: IEmailService
   ) {}
 
@@ -147,23 +149,60 @@ export class AuthService {
     return user;
   }
 
+  /**
+   * Login lockout is tracked per **email** (`this.loginAttempts`), not per
+   * user id, and is written to identically whether or not that email belongs
+   * to a real account. If only real accounts accumulated failed attempts —
+   * e.g. a counter living on the user document — an attacker could tell a
+   * registered email apart from a made-up one just by noticing that repeated
+   * wrong guesses against it eventually behave differently (extra writes,
+   * then a lock) while a made-up email never would. Keeping the two lookups
+   * (`loginAttempts`, `users`) and the dummy-hash compare fully symmetric
+   * between the "account exists" and "account doesn't exist" branches is what
+   * closes both that message/status leak and the underlying timing one.
+   */
   async login(input: LoginInput): Promise<AuthResult> {
-    const record = await this.users.findByEmailWithPassword(input.email);
-    if (!record) {
-      // Compare against a dummy hash so a missing account costs the same time as
-      // a wrong password — otherwise the timing difference leaks which emails
-      // are registered. Same error message either way (no enumeration).
-      await comparePassword(input.password, await getDummyPasswordHash());
-      throw new UnauthorizedError('Invalid email or password');
+    const invalidCredentials = new UnauthorizedError('Invalid email or password');
+    const email = input.email.toLowerCase();
+
+    const attemptState = await this.loginAttempts.find(email);
+    const isLocked = Boolean(attemptState?.lockedUntil && attemptState.lockedUntil > new Date());
+
+    const record = await this.users.findByEmailWithPassword(email);
+
+    // Always run the bcrypt compare — against the real hash if the account
+    // exists, a dummy one otherwise — so a missing account, a wrong password,
+    // and a locked account all cost the same time (no timing enumeration).
+    const passwordMatches = record
+      ? await comparePassword(input.password, record.password)
+      : await comparePassword(input.password, await getDummyPasswordHash()).then(() => false);
+
+    if (isLocked) {
+      // Same generic error as a wrong password: disclosing "this account is
+      // locked" would itself be an enumeration signal, so the lock — and the
+      // fact that it only applies to real accounts — is never revealed.
+      throw invalidCredentials;
     }
-    if (!(await comparePassword(input.password, record.password))) {
-      throw new UnauthorizedError('Invalid email or password');
+
+    if (!record || !passwordMatches) {
+      const attempts = await this.loginAttempts.recordFailedAttempt(email);
+      if (attempts >= LOGIN_MAX_ATTEMPTS) {
+        await this.loginAttempts.lock(
+          email,
+          new Date(Date.now() + env.LOGIN_LOCKOUT_MINUTES * MINUTE_MS)
+        );
+        logger.warn('Login temporarily locked after repeated failed attempts', { email });
+      }
+      throw invalidCredentials;
     }
+
     // Credentials are correct but the account is unverified — the password check
     // ran first so this can't be used to probe which emails are registered.
     if (!record.isVerified) {
       throw new ForbiddenError('Please verify your email before logging in');
     }
+
+    await this.loginAttempts.reset(email);
     const user: User = {
       id: record.id,
       firstName: record.firstName,
@@ -177,16 +216,38 @@ export class AuthService {
     return { user, tokens };
   }
 
+  /**
+   * Rotation with reuse detection: the presented token is atomically swapped
+   * for a new one in the same family (single-use — a concurrent request with
+   * the same token loses the race). If the presented token had *already* been
+   * rotated out before, that's only possible if it leaked (e.g. was stolen and
+   * used by an attacker) — the repository treats that as a compromise signal
+   * and revokes every token in the family, so this rejects with the same
+   * generic 401 and the caller must log in again from scratch.
+   */
   async refresh(refreshToken: string): Promise<AuthTokens> {
-    const tokenHash = hashToken(refreshToken);
-    // Rotation: atomically consume the presented token so it's strictly
-    // single-use. If two requests race with the same token, only the one that
-    // wins the delete gets a userId back; the other is rejected.
-    const userId = await this.refreshTokens.consumeByValidHash(tokenHash);
-    if (!userId) {
-      throw new UnauthorizedError('Invalid or expired refresh token');
+    const invalid = new UnauthorizedError('Invalid or expired refresh token');
+    const newRefreshToken = generateOpaqueToken();
+    const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * DAY_MS);
+
+    const result = await this.refreshTokens.rotate(
+      hashToken(refreshToken),
+      hashToken(newRefreshToken),
+      expiresAt
+    );
+
+    if (result.status === 'reused') {
+      logger.warn('Refresh token reuse detected — all sessions revoked', {
+        userId: result.userId,
+      });
+      throw invalid;
     }
-    return this.issueTokens(userId);
+    if (result.status === 'invalid') {
+      throw invalid;
+    }
+
+    const accessToken = signAccessToken(result.userId);
+    return { accessToken, refreshToken: newRefreshToken };
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -225,6 +286,9 @@ export class AuthService {
     }
     const passwordHash = await hashPassword(newPassword);
     await this.users.updatePassword(user.id, passwordHash);
+    // Clear any login lockout — proving control of the mailbox via the reset
+    // token is a stronger proof of ownership than the password ever was.
+    await this.loginAttempts.reset(user.email);
     // Force re-login everywhere after a password change.
     await this.refreshTokens.deleteAllForUser(user.id);
     logger.info('Password reset', { userId: user.id });

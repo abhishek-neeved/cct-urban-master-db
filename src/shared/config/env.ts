@@ -56,6 +56,12 @@ const envSchema = z
       .int()
       .positive()
       .default(ENV_DEFAULTS.OTP_RESEND_COOLDOWN_SECONDS),
+    // How long an account stays locked after LOGIN_MAX_ATTEMPTS wrong passwords.
+    LOGIN_LOCKOUT_MINUTES: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(ENV_DEFAULTS.LOGIN_LOCKOUT_MINUTES),
 
     // Comma-separated list of allowed CORS origins (leave empty to allow all in dev).
     CORS_ORIGINS: z.string().optional(),
