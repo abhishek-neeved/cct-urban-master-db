@@ -119,7 +119,7 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 {
   "success": true,
   "data": {
-    "user": { "id": "…", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
+    "user": { "id": "…", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "role": "user", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
     "otpDevCode": "042317"
   },
   "requestId": "…"
@@ -270,7 +270,7 @@ cookie set by `login`/`refresh` (the header takes precedence if both are sent).
 ```json
 {
   "success": true,
-  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
+  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "role": "user", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
   "requestId": "…"
 }
 ```
@@ -279,6 +279,467 @@ cookie set by `login`/`refresh` (the header takes precedence if both are sent).
 
 ```bash
 curl http://localhost:3000/api/auth/me \
+  -H "Authorization: Bearer <accessToken>"
+```
+
+---
+
+## Users
+
+Profile reads/updates that don't belong to auth's credential/session scope.
+Operates on the same user record as `/api/auth/*` — `GET /api/users/me` is a
+superset of `GET /api/auth/me`, kept as a separate module boundary for
+profile-shaped concerns (and future fields like a profile photo) as they're
+added.
+
+Every user now carries a **`role`** (`"user"` | `"admin"`, defaults to
+`"user"`) alongside the existing fields. Roles are never set at registration —
+promoting a user to `admin` is a direct data change today, until an admin
+management endpoint exists. Role-gated routes look the role up fresh on every
+request rather than trusting a claim embedded in the access token, so a role
+change takes effect on the very next request instead of waiting out the
+token's remaining lifetime.
+
+### `GET /api/users/me`
+
+Return the authenticated user's profile, including `role`. **Protected** — same
+Bearer/cookie rules as `GET /api/auth/me`.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200**
+```json
+{
+  "success": true,
+  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "role": "user", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid access token · `404` user no longer exists
+
+### `PATCH /api/users/me`
+
+Update the authenticated user's `firstName`/`lastName`. At least one field is
+required.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body**
+
+| Field       | Rules                                             |
+| ----------- | -------------------------------------------------- |
+| `firstName` | optional, 1–120 chars                              |
+| `lastName`  | optional, 1–120 chars                              |
+|             | at least one of `firstName`/`lastName` is required |
+
+**200** → `{ "success": true, "data": { "user": { …, "firstName": "Grace" } }, "requestId": "…" }`
+
+**Errors:** `401` missing/invalid access token · `404` user no longer exists · `422` invalid body (including an empty body)
+
+```bash
+curl -X PATCH http://localhost:3000/api/users/me \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Grace"}'
+```
+
+---
+
+## Uploads
+
+Presigned S3 (or any S3-compatible provider — MinIO locally, see
+`docker-compose.yml`) upload/view URLs. **Files never transit this server**:
+the client PUTs bytes directly to `uploadUrl`, and reads go through a
+short-lived presigned GET rather than a public bucket URL, so uploaded
+documents stay private by default.
+
+Every object key is `<purpose>/<userId>/<uuid>` — the owner is embedded in the
+key itself (not just protected by the UUID being unguessable), which is what
+lets `GET /api/uploads/view` reject one user reading another user's file with
+a real authorization check rather than obscurity alone.
+
+> **Presign, then upload, then submit:** call `presign` to get a URL, PUT the
+> raw file bytes to that URL with the **same** `Content-Type`, then pass the
+> returned `key` along with whatever resource the file belongs to (e.g. a KYC
+> submission's `aadharImageKey`). The upload itself never goes through
+> `/api/*` — only the presign call and the final submission using the key do.
+
+### `POST /api/uploads/presign`
+
+Get a short-lived presigned URL (`S3_PRESIGNED_URL_TTL_SECONDS`, default 300s)
+to upload a file directly to object storage. **Protected.**
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body**
+
+| Field         | Rules                                                     |
+| ------------- | ---------------------------------------------------------- |
+| `purpose`     | required, one of `kyc-aadhar`, `kyc-pan`, `kyc-photo`      |
+| `contentType` | required, one of `image/jpeg`, `image/png`, `application/pdf` |
+
+**200**
+```json
+{
+  "success": true,
+  "data": {
+    "uploadUrl": "https://<bucket>.s3.<region>.amazonaws.com/kyc-aadhar/<userId>/<uuid>?X-Amz-...",
+    "key": "kyc-aadhar/<userId>/<uuid>",
+    "expiresIn": 300
+  },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid access token · `422` invalid body (unrecognised `purpose`/`contentType`)
+
+```bash
+curl -X POST http://localhost:3000/api/uploads/presign \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"purpose":"kyc-aadhar","contentType":"image/jpeg"}'
+
+# Then, using the returned uploadUrl:
+curl -X PUT "<uploadUrl>" -H "Content-Type: image/jpeg" --data-binary @aadhar.jpg
+```
+
+### `GET /api/uploads/view`
+
+Get a short-lived presigned URL to view a previously uploaded file. **Protected**
+— and further scoped to the caller: a key belonging to a different user gets
+**403**, not the file.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Query:** `key` (the value returned by `presign`)
+
+**200** → `{ "success": true, "data": { "viewUrl": "https://..." }, "requestId": "…" }`
+
+**Errors:** `401` missing/invalid access token · `403` the key does not belong to the caller · `422` missing `key`
+
+```bash
+curl "http://localhost:3000/api/uploads/view?key=kyc-aadhar/<userId>/<uuid>" \
+  -H "Authorization: Bearer <accessToken>"
+```
+
+---
+
+## KYC
+
+Identity verification: submit Aadhar/PAN/photograph, then wait for admin
+review. The state machine has exactly one loop-back edge:
+
+```
+not_started ──submit──▶ pending ──approve──▶ verified (terminal)
+                 ▲          │
+                 └─reject───┘
+```
+
+`not_started` has no document in the database — it's the default `GET
+/api/kyc/me` returns when the user has never submitted. A rejection can
+always be resubmitted (clearing the previous `rejectionReason` and
+re-entering the queue as `pending`); `verified` is terminal — there is no
+un-verify today.
+
+> **Image fields are S3 keys, not files.** `aadharImageKey`, `panImageKey`,
+> and `photographKey` are object keys returned by `POST /api/uploads/presign`
+> (see the Uploads section above) — upload the files there first, then submit
+> their keys here.
+
+### `GET /api/kyc/me`
+
+Return the authenticated user's KYC status and, once submitted, their data.
+**Protected.**
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200** (before any submission)
+```json
+{ "success": true, "data": { "status": "not_started" }, "requestId": "…" }
+```
+
+**200** (after submission)
+```json
+{
+  "success": true,
+  "data": {
+    "status": "pending",
+    "aadharNumber": "123456789012",
+    "aadharImageKey": "kyc-aadhar/<userId>/<uuid>",
+    "panNumber": "ABCDE1234F",
+    "panImageKey": "kyc-pan/<userId>/<uuid>",
+    "address": "221B Baker Street",
+    "photographKey": "kyc-photo/<userId>/<uuid>",
+    "submittedAt": "…"
+  },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid access token
+
+### `POST /api/kyc/submit`
+
+Submit (or resubmit, after a rejection) identity documents for review.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body**
+
+| Field            | Rules                                          |
+| ---------------- | ------------------------------------------------ |
+| `aadharNumber`   | required, exactly 12 digits                    |
+| `aadharImageKey` | required — key from `POST /api/uploads/presign` |
+| `panNumber`      | required, format `ABCDE1234F`                  |
+| `panImageKey`    | required — key from `POST /api/uploads/presign` |
+| `dateOfBirth`    | optional, ISO date                             |
+| `address`        | required                                       |
+| `photographKey`  | required — key from `POST /api/uploads/presign` |
+| `uan`            | optional, exactly 14 digits if present         |
+
+**200** → the updated record, `status: "pending"`
+
+**Errors:** `400` already verified, or already pending review · `401` missing/invalid access token · `422` invalid body
+
+```bash
+curl -X POST http://localhost:3000/api/kyc/submit \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "aadharNumber":"123456789012","aadharImageKey":"kyc-aadhar/u1/a1",
+    "panNumber":"ABCDE1234F","panImageKey":"kyc-pan/u1/a2",
+    "address":"221B Baker Street","photographKey":"kyc-photo/u1/a3"
+  }'
+```
+
+### Admin review
+
+Everything below requires **both** a valid access token **and** the caller's
+`role` being `admin` (see the Users section above — roles are looked up fresh
+on every request). A non-admin gets **403**. There is no self-service way to
+become an admin today; it's a direct data change (`role: "admin"` on the user
+document) until an admin-management endpoint exists.
+
+#### `GET /api/admin/kyc`
+
+List submissions for review, optionally filtered by status.
+
+**Headers:** `Authorization: Bearer <accessToken>` (admin)
+
+**Query:** `status` (optional — one of `pending`, `verified`, `rejected`; omit for all)
+
+**200** → `{ "success": true, "data": { "records": [ { "id": "…", "userId": "…", "status": "pending", … } ] }, "requestId": "…" }`
+
+**Errors:** `401` missing/invalid access token · `403` caller is not an admin · `422` invalid `status`
+
+#### `PATCH /api/admin/kyc/:userId/approve`
+
+Approve a pending submission. Rejects with **400** if the submission isn't
+currently `pending` (e.g. already verified, or never submitted at all — that
+case is **404** instead).
+
+**Headers:** `Authorization: Bearer <accessToken>` (admin)
+
+**200** → the updated record, `status: "verified"`
+
+**Errors:** `400` not pending · `401` missing/invalid access token · `403` caller is not an admin · `404` no submission for this user
+
+#### `PATCH /api/admin/kyc/:userId/reject`
+
+Reject a pending submission with a reason. Same pending-only rule as approve.
+
+**Headers:** `Authorization: Bearer <accessToken>` (admin)
+
+**Body:** `reason` (required, non-empty)
+
+**200** → the updated record, `status: "rejected"`, `rejectionReason` set
+
+**Errors:** `400` not pending · `401` missing/invalid access token · `403` caller is not an admin · `404` no submission for this user · `422` missing `reason`
+
+```bash
+curl -X PATCH http://localhost:3000/api/admin/kyc/<userId>/reject \
+  -H "Authorization: Bearer <adminAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"Aadhar photo is blurry and unreadable"}'
+```
+
+---
+
+## Subscriptions
+
+Recurring ₹10/month billing via Razorpay. Status is derived from Razorpay's
+own subscription lifecycle and collapses to 4 client-facing states:
+
+| Client status | Razorpay states it covers |
+| -------------- | -------------------------- |
+| `inactive`     | no subscription yet, or checkout started but not yet authorized (`created`, `authenticated`, `pending`) |
+| `active`       | `active`, `completed`      |
+| `past_due`     | `halted` (a charge failed) |
+| `cancelled`    | `cancelled`, `expired`     |
+
+> **Status only ever changes via the webhook.** `POST /api/subscriptions/checkout`
+> creates the Razorpay subscription and returns a URL for the client to open
+> (Razorpay Checkout) to collect the authorization payment — it does **not**
+> mark the subscription active. Only `POST /api/subscriptions/webhook`,
+> verified against Razorpay's own signature, is trusted to change status. A
+> client claiming "payment succeeded" is not proof of payment; Razorpay's
+> signed notification is.
+
+### `GET /api/subscriptions/me`
+
+Return the authenticated user's subscription status and plan. **Protected.**
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "active",
+    "plan": { "id": "monthly", "name": "Monthly plan", "priceInRupees": 10, "intervalLabel": "month" },
+    "startedAt": "…",
+    "renewsAt": "…"
+  },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid access token
+
+### `POST /api/subscriptions/checkout`
+
+Start a new subscription. Creates a Razorpay subscription and returns its id
+and a short URL (Razorpay Checkout) for the client to open and complete the
+authorization payment.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200** → `{ "success": true, "data": { "razorpaySubscriptionId": "sub_…", "shortUrl": "https://rzp.io/i/…" }, "requestId": "…" }`
+
+**Errors:** `401` missing/invalid access token · `409` already has an active subscription
+
+### `POST /api/subscriptions/cancel`
+
+Cancel the authenticated user's active subscription immediately (not at the
+end of the current billing cycle) via the Razorpay API.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200** → `{ "success": true, "data": { "message": "Subscription cancelled" }, "requestId": "…" }`
+
+**Errors:** `400` no active subscription to cancel · `401` missing/invalid access token
+
+### `POST /api/subscriptions/webhook`
+
+Razorpay's webhook for subscription lifecycle events (`subscription.activated`,
+`.charged`, `.halted`, `.cancelled`, etc.) — the only endpoint allowed to
+change subscription status. **Not** gated by a user session; its trust
+boundary is the signature check below.
+
+> **Signature verification.** Razorpay signs the raw request body with
+> HMAC-SHA256 using the webhook secret configured on both sides
+> (`RAZORPAY_WEBHOOK_SECRET`), sent as the `X-Razorpay-Signature` header. A
+> missing or invalid signature is rejected with **401** before the body is
+> ever read as an event. A validly signed event for a subscription this app
+> doesn't recognise (e.g. a webhook misconfigured for a different account) is
+> logged and ignored — still **200**, so Razorpay doesn't endlessly retry.
+
+**Headers:** `X-Razorpay-Signature: <hex hmac>`
+
+**Body:** the raw Razorpay webhook payload (unvalidated beyond signature — this app reads only `event` and `payload.subscription.entity`)
+
+**200** → `{ "success": true, "data": { "received": true }, "requestId": "…" }` (event applied or ignored)
+
+**Errors:** `401` invalid or missing signature
+
+```bash
+BODY='{"event":"subscription.activated","payload":{"subscription":{"entity":{"id":"sub_abc","status":"active","current_start":1700000000,"current_end":1702592000}}}}'
+SIGNATURE=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$RAZORPAY_WEBHOOK_SECRET" | sed 's/^.* //')
+curl -X POST http://localhost:3000/api/subscriptions/webhook \
+  -H "Content-Type: application/json" \
+  -H "X-Razorpay-Signature: $SIGNATURE" \
+  -d "$BODY"
+```
+
+---
+
+## Criminal Record
+
+A criminal-record check status. **There is no user-facing submission** —
+the check itself happens outside this app (a real background-check vendor
+integration is deferred); an admin records the outcome directly. `pending`
+is the default until an admin sets a result.
+
+### `GET /api/criminal-record/me`
+
+Return the authenticated user's criminal-record check status. **Protected.**
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200** (before any admin action)
+```json
+{ "success": true, "data": { "status": "pending" }, "requestId": "…" }
+```
+
+**Errors:** `401` missing/invalid access token
+
+### `PATCH /api/admin/criminal-record/:userId`
+
+Set a user's criminal-record check result. **Admin only** — same role-gating as KYC's admin routes (see the KYC section above).
+
+**Headers:** `Authorization: Bearer <accessToken>` (admin)
+
+**Body:** `status` (required, one of `pending`, `clear`, `flagged`)
+
+**200** → `{ "success": true, "data": { "status": "clear", "checkedAt": "…" }, "requestId": "…" }`
+
+**Errors:** `401` missing/invalid access token · `403` caller is not an admin · `422` invalid body/`userId`
+
+```bash
+curl -X PATCH http://localhost:3000/api/admin/criminal-record/<userId> \
+  -H "Authorization: Bearer <adminAccessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"clear"}'
+```
+
+---
+
+## Dashboard
+
+### `GET /api/dashboard/me`
+
+Composes profile essentials, KYC status, criminal-record status, and
+subscription status into one response — everything a dashboard screen needs
+from a single request instead of the several separate ones each module's own
+`/me` endpoint would otherwise require. Purely read-only: no new persisted
+state, and every field is owned and validated by its source module (see the
+Users/KYC/Criminal Record/Subscriptions sections above for what each means).
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**200**
+```json
+{
+  "success": true,
+  "data": {
+    "user": { "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com" },
+    "kyc": { "status": "not_started" },
+    "criminalRecord": { "status": "pending" },
+    "subscription": {
+      "status": "inactive",
+      "plan": { "id": "monthly", "name": "Monthly plan", "priceInRupees": 10, "intervalLabel": "month" }
+    }
+  },
+  "requestId": "…"
+}
+```
+
+**Errors:** `401` missing/invalid access token · `404` user no longer exists
+
+```bash
+curl http://localhost:3000/api/dashboard/me \
   -H "Authorization: Bearer <accessToken>"
 ```
 

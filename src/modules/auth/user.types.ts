@@ -1,4 +1,6 @@
-import type { UserRow } from './auth.model';
+import type { UserRow, UserRole } from './auth.model';
+
+export type { UserRole };
 
 /** Domain representation returned to callers — never includes the password. */
 export interface User {
@@ -6,6 +8,7 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
+  role: UserRole;
   isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -25,7 +28,7 @@ export interface CreateUserInput {
 /** The fields `toUser` needs — satisfied by a full `UserRow`. */
 type PublicUserRow = Pick<
   UserRow,
-  '_id' | 'firstName' | 'lastName' | 'email' | 'isVerified' | 'createdAt' | 'updatedAt'
+  '_id' | 'firstName' | 'lastName' | 'email' | 'role' | 'isVerified' | 'createdAt' | 'updatedAt'
 >;
 
 export const toUser = (row: PublicUserRow): User => ({
@@ -33,6 +36,7 @@ export const toUser = (row: PublicUserRow): User => ({
   firstName: row.firstName,
   lastName: row.lastName,
   email: row.email,
+  role: row.role,
   isVerified: row.isVerified,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,

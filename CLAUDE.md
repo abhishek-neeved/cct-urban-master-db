@@ -12,10 +12,14 @@ validation, Winston logging, and Vitest tests. The project is **native ESM**
 (`"type": "module"`, `moduleResolution: bundler`). Full docs live in
 [`docs/`](./docs/README.md).
 
-The current API surface is the **auth** module (`/api/auth/*`): register,
-verify-otp, resend-otp, login, refresh, logout, forgot-password,
-verify-forgot-password-token, reset-password. See
-[`docs/api-reference.md`](./docs/api-reference.md).
+The current API surface spans seven modules — `auth` (`/api/auth/*`:
+register, verify-otp, resend-otp, login, refresh, logout, forgot-password,
+verify-forgot-password-token, reset-password), `users` (`/api/users/*`),
+`uploads` (`/api/uploads/*`, presigned S3 URLs), `kyc` (`/api/kyc/*` +
+`/api/admin/kyc/*`), `criminal-record` (`/api/criminal-record/*` +
+`/api/admin/criminal-record/*`), `subscriptions` (`/api/subscriptions/*`,
+Razorpay-backed), and `dashboard` (`/api/dashboard/*`, a read-only
+composition over the others). See [`docs/api-reference.md`](./docs/api-reference.md).
 
 ## Architecture (respect the layering)
 

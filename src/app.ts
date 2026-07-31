@@ -13,7 +13,18 @@ export const createApp = (): Application => {
   // Security & parsing
   app.use(helmet());
   app.use(corsMiddleware());
-  app.use(express.json({ limit: '100kb' }));
+  app.use(
+    express.json({
+      limit: '100kb',
+      // Capture the exact raw bytes before parsing — Razorpay's webhook
+      // signature (@modules/subscriptions) is an HMAC over the raw body, and
+      // re-serializing the parsed JSON is not guaranteed byte-identical to
+      // what Razorpay actually signed.
+      verify: (req: express.Request, _res, buf) => {
+        req.rawBody = buf;
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
 

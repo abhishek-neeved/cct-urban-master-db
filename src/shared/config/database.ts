@@ -1,6 +1,12 @@
+import dns from 'node:dns';
 import mongoose from 'mongoose';
 import { env } from './env';
 import { logger } from '@utils/logger';
+
+// Node's default resolver can end up pointed at a dead loopback/VPN stub
+// (127.0.0.1) that refuses SRV queries even though the OS resolver works
+// fine, breaking `mongodb+srv://` lookups. Force known-good DNS servers.
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 /**
  * Opens the shared Mongoose connection repositories query through (models

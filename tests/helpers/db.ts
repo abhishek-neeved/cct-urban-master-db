@@ -6,6 +6,9 @@ import {
   RefreshTokenModel,
   LoginAttemptModel,
 } from '@modules/auth/auth.model';
+import { KycModel } from '@modules/kyc/kyc.model';
+import { SubscriptionModel } from '@modules/subscriptions/subscriptions.model';
+import { CriminalRecordModel } from '@modules/criminal-record/criminal-record.model';
 
 let mongod: MongoMemoryServer | null = null;
 
@@ -21,6 +24,9 @@ export const connectTestDb = async (): Promise<void> => {
     OtpModel.init(),
     RefreshTokenModel.init(),
     LoginAttemptModel.init(),
+    KycModel.init(),
+    SubscriptionModel.init(),
+    CriminalRecordModel.init(),
   ]);
 };
 
@@ -30,6 +36,9 @@ export const clearTestDb = async (): Promise<void> => {
   await OtpModel.deleteMany({});
   await UserModel.deleteMany({});
   await LoginAttemptModel.deleteMany({});
+  await KycModel.deleteMany({});
+  await SubscriptionModel.deleteMany({});
+  await CriminalRecordModel.deleteMany({});
 };
 
 /** Tear down the connection. */

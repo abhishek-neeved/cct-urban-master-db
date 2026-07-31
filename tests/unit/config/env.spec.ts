@@ -56,12 +56,73 @@ describe('env config', () => {
     errSpy.mockRestore();
   });
 
+  const stubProductionRazorpay = (): void => {
+    vi.stubEnv('RAZORPAY_KEY_ID', 'rzp_live_real');
+    vi.stubEnv('RAZORPAY_KEY_SECRET', 'a-real-secret');
+    vi.stubEnv('RAZORPAY_PLAN_ID', 'plan_real123');
+    vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'a-real-webhook-secret');
+  };
+
   it('accepts a correctly configured production environment', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('JWT_ACCESS_SECRET', 'x'.repeat(40));
     vi.stubEnv('CORS_ORIGINS', 'https://app.example.com');
+    stubProductionRazorpay();
     const { env, isProduction } = await loadEnv();
     expect(isProduction).toBe(true);
     expect(env.NODE_ENV).toBe('production');
+  });
+
+  it('defaults S3 config for local dev without requiring credentials', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const { env } = await loadEnv();
+    expect(env.S3_BUCKET).toBe('cdma-uploads-dev');
+    expect(env.S3_ENDPOINT).toBeUndefined();
+    expect(env.S3_FORCE_PATH_STYLE).toBe(false);
+  });
+
+  it('rejects a custom S3 endpoint without static credentials (e.g. MinIO)', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('S3_ENDPOINT', 'http://localhost:9000');
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(loadEnv()).rejects.toThrow('Invalid environment configuration');
+    errSpy.mockRestore();
+  });
+
+  it('accepts a custom S3 endpoint with static credentials', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('S3_ENDPOINT', 'http://localhost:9000');
+    vi.stubEnv('S3_ACCESS_KEY_ID', 'minioadmin');
+    vi.stubEnv('S3_SECRET_ACCESS_KEY', 'minioadmin');
+    vi.stubEnv('S3_FORCE_PATH_STYLE', 'true');
+    const { env } = await loadEnv();
+    expect(env.S3_ENDPOINT).toBe('http://localhost:9000');
+    expect(env.S3_FORCE_PATH_STYLE).toBe(true);
+  });
+
+  it('defaults Razorpay config to dev placeholders outside production', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    const { env } = await loadEnv();
+    expect(env.RAZORPAY_KEY_ID).toBe('rzp_test_placeholder');
+    expect(env.RAZORPAY_PLAN_ID).toBe('plan_placeholder');
+  });
+
+  it.each([
+    ['RAZORPAY_KEY_ID', 'rzp_test_placeholder'],
+    ['RAZORPAY_KEY_SECRET', 'dev-razorpay-secret-change-me'],
+    ['RAZORPAY_PLAN_ID', 'plan_placeholder'],
+    ['RAZORPAY_WEBHOOK_SECRET', 'dev-webhook-secret-change-me'],
+  ])('rejects a production boot that leaves %s at its dev placeholder', async (key, placeholder) => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('JWT_ACCESS_SECRET', 'x'.repeat(40));
+    vi.stubEnv('CORS_ORIGINS', 'https://app.example.com');
+    stubProductionRazorpay();
+    // Explicitly re-set just this one var back to its dev placeholder value —
+    // stubProductionRazorpay() above already gave every var a real value, so
+    // this isolates the one field the refine should catch.
+    vi.stubEnv(key, placeholder);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(loadEnv()).rejects.toThrow('Invalid environment configuration');
+    errSpy.mockRestore();
   });
 });

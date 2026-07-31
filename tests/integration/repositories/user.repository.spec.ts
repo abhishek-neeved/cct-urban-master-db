@@ -87,4 +87,24 @@ describe('UserRepository (integration)', () => {
     expect(withPassword?.password).toBe('new-hashed-pw');
     await expect(repository.findByValidResetToken(tokenHash)).resolves.toBeNull();
   });
+
+  it('defaults new users to the "user" role', async () => {
+    const created = await seed();
+    expect(created.role).toBe('user');
+  });
+
+  it('updates profile fields and returns the updated domain user', async () => {
+    const user = await seed();
+
+    const updated = await repository.updateProfile(user.id, { firstName: 'Grace' });
+
+    expect(updated?.firstName).toBe('Grace');
+    expect(updated?.lastName).toBe(user.lastName);
+    await expect(repository.findById(user.id)).resolves.toEqual(updated);
+  });
+
+  it('returns null from updateProfile for a missing / invalid id', async () => {
+    await expect(repository.updateProfile('not-a-uuid', { firstName: 'Grace' })).resolves.toBeNull();
+    await expect(repository.updateProfile(ABSENT_ID, { firstName: 'Grace' })).resolves.toBeNull();
+  });
 });

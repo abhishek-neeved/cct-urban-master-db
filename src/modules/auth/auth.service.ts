@@ -203,15 +203,7 @@ export class AuthService {
     }
 
     await this.loginAttempts.reset(email);
-    const user: User = {
-      id: record.id,
-      firstName: record.firstName,
-      lastName: record.lastName,
-      email: record.email,
-      isVerified: record.isVerified,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    };
+    const { password, ...user } = record;
     const tokens = await this.issueTokens(user.id);
     return { user, tokens };
   }
@@ -268,7 +260,10 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + env.PASSWORD_RESET_TTL_MINUTES * MINUTE_MS);
     await this.users.setPasswordResetToken(user.id, hashToken(rawToken), expiresAt);
 
-    const resetUrl = `${env.APP_URL}/reset-password?token=${rawToken}`;
+    // Points at web-app, not this API's own APP_URL — a plain web page is
+    // reachable from any device's mail client (including a phone's), unlike
+    // a mobileapp:// deep link, which not all mail apps render as tappable.
+    const resetUrl = `${env.WEB_APP_URL}/reset-password?token=${rawToken}`;
     await this.email.sendPasswordResetEmail(user.email, resetUrl);
 
     return isProduction ? undefined : rawToken;

@@ -10,6 +10,12 @@ export const DEFAULT_ACCESS_SECRET = 'dev-access-secret-change-me';
 /** Minimum length required for the JWT access secret in production. */
 export const MIN_PROD_SECRET_LENGTH = 32;
 
+/** Fallback Razorpay config for local dev — all rejected in production (see env.ts). */
+export const DEFAULT_RAZORPAY_KEY_ID = 'rzp_test_placeholder';
+export const DEFAULT_RAZORPAY_KEY_SECRET = 'dev-razorpay-secret-change-me';
+export const DEFAULT_RAZORPAY_PLAN_ID = 'plan_placeholder';
+export const DEFAULT_RAZORPAY_WEBHOOK_SECRET = 'dev-webhook-secret-change-me';
+
 /** Allowed range for bcrypt salt rounds (floor kept high enough to be costly). */
 export const BCRYPT_SALT_ROUNDS = { min: 10, max: 15, default: 12 } as const;
 
@@ -49,6 +55,7 @@ export const ENV_DEFAULTS = {
   LOG_LEVEL: 'info',
   DATABASE_URL: 'mongodb://127.0.0.1:27017/express_ts_layered',
   APP_URL: 'http://localhost:3000',
+  WEB_APP_URL: 'http://localhost:5173',
   JWT_ACCESS_EXPIRES_IN: '15m',
   REFRESH_TOKEN_TTL_DAYS: 7,
   PASSWORD_RESET_TTL_MINUTES: 60,
@@ -70,3 +77,6 @@ export const LOG_FORMATS = ['json', 'pretty'] as const;
 /** Cookie names auth tokens are mirrored into (see `@utils/cookie.util`). */
 export const ACCESS_TOKEN_COOKIE = 'accessToken';
 export const REFRESH_TOKEN_COOKIE = 'refreshToken';
+
+/** How long a presigned upload/view URL stays valid (see `@modules/uploads`). */
+export const S3_PRESIGNED_URL_TTL_SECONDS = 300;

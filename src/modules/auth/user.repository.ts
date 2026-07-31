@@ -2,6 +2,11 @@ import { UserModel, type UserRow } from './auth.model';
 import { BaseRepository } from '@shared/repositories/base.repository';
 import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.types';
 
+export interface UpdateUserProfileInput {
+  firstName?: string;
+  lastName?: string;
+}
+
 export interface IUserRepository {
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
@@ -10,6 +15,7 @@ export interface IUserRepository {
   setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
   findByValidResetToken(tokenHash: string): Promise<User | null>;
   updatePassword(userId: string, passwordHash: string): Promise<void>;
+  updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null>;
   markVerified(userId: string): Promise<void>;
 }
 
@@ -61,5 +67,9 @@ export class UserRepository
 
   async markVerified(userId: string): Promise<void> {
     await UserModel.updateOne({ _id: userId }, { isVerified: true });
+  }
+
+  async updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null> {
+    return this.updateById(userId, input);
   }
 }

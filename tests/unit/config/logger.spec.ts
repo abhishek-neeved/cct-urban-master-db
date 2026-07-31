@@ -51,6 +51,10 @@ describe('logger', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('JWT_ACCESS_SECRET', 'x'.repeat(40));
     vi.stubEnv('CORS_ORIGINS', 'https://app.example.com');
+    vi.stubEnv('RAZORPAY_KEY_ID', 'rzp_live_real');
+    vi.stubEnv('RAZORPAY_KEY_SECRET', 'a-real-secret');
+    vi.stubEnv('RAZORPAY_PLAN_ID', 'plan_real123');
+    vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'a-real-webhook-secret');
     const { logger } = await import('@utils/logger');
 
     const cap = attachCapture(logger);

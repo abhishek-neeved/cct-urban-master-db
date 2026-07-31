@@ -16,6 +16,7 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   firstName: 'Ada',
   lastName: 'Lovelace',
   email: 'ada@example.com',
+  role: 'user',
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
@@ -47,6 +48,7 @@ describe('AuthService', () => {
       setPasswordResetToken: vi.fn(),
       findByValidResetToken: vi.fn(),
       updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
       markVerified: vi.fn(),
     };
     refreshTokens = {

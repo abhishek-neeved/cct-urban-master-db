@@ -20,7 +20,7 @@ const options: swaggerJSDoc.Options = {
       title: 'CDMA Master DB API',
       version: '1.0.0',
       description:
-        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens), OTP-based email verification, and password reset.',
+        'CDMA Master DB — REST API on a feature-modular layered architecture with dependency inversion at the data-access boundary. Current surface: JWT auth (access + rotating refresh tokens), OTP-based email verification, password reset, and user profiles.',
     },
     servers: [{ url: env.APP_URL }],
     tags: [
@@ -28,6 +28,15 @@ const options: swaggerJSDoc.Options = {
         name: 'Auth',
         description: 'Registration, email/OTP verification, login, tokens and password reset',
       },
+      { name: 'Users', description: 'Authenticated profile reads and updates' },
+      { name: 'Uploads', description: 'Presigned S3 upload/view URLs for user-submitted files' },
+      { name: 'KYC', description: 'Identity verification submission and admin review' },
+      {
+        name: 'Criminal Record',
+        description: 'Criminal-record check status — read-only for users, admin-settable',
+      },
+      { name: 'Subscriptions', description: 'Razorpay-backed recurring subscription billing' },
+      { name: 'Dashboard', description: 'Composed read-only summary for the dashboard screen' },
       { name: 'Health', description: 'Combined liveness + readiness probe' },
     ],
     components: {
@@ -49,6 +58,7 @@ const options: swaggerJSDoc.Options = {
             firstName: { type: 'string' },
             lastName: { type: 'string' },
             email: { type: 'string', format: 'email' },
+            role: { type: 'string', enum: ['user', 'admin'] },
             isVerified: { type: 'boolean' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -58,10 +68,157 @@ const options: swaggerJSDoc.Options = {
             'firstName',
             'lastName',
             'email',
+            'role',
             'isVerified',
             'createdAt',
             'updatedAt',
           ],
+        },
+        UpdateProfileRequest: {
+          type: 'object',
+          description: 'At least one of firstName/lastName must be provided.',
+          properties: {
+            firstName: { type: 'string', minLength: 1, maxLength: 120 },
+            lastName: { type: 'string', minLength: 1, maxLength: 120 },
+          },
+        },
+        PresignUploadRequest: {
+          type: 'object',
+          properties: {
+            purpose: {
+              type: 'string',
+              enum: ['kyc-aadhar', 'kyc-pan', 'kyc-photo'],
+            },
+            contentType: {
+              type: 'string',
+              enum: ['image/jpeg', 'image/png', 'application/pdf'],
+            },
+          },
+          required: ['purpose', 'contentType'],
+        },
+        PresignedUpload: {
+          type: 'object',
+          properties: {
+            uploadUrl: { type: 'string', example: 'https://s3.amazonaws.com/...' },
+            key: { type: 'string', example: 'kyc-aadhar/64f.../3fa8...uuid' },
+            expiresIn: { type: 'integer', example: 300 },
+          },
+          required: ['uploadUrl', 'key', 'expiresIn'],
+        },
+        KycRecord: {
+          type: 'object',
+          description: '`not_started` has no submitted fields — every field below is absent until first submission.',
+          properties: {
+            status: { type: 'string', enum: ['not_started', 'pending', 'verified', 'rejected'] },
+            aadharNumber: { type: 'string', example: '123456789012' },
+            aadharImageKey: { type: 'string' },
+            panNumber: { type: 'string', example: 'ABCDE1234F' },
+            panImageKey: { type: 'string' },
+            dateOfBirth: { type: 'string', format: 'date-time' },
+            address: { type: 'string' },
+            photographKey: { type: 'string' },
+            uan: { type: 'string', example: '12345678901234' },
+            submittedAt: { type: 'string', format: 'date-time' },
+            rejectionReason: { type: 'string' },
+          },
+          required: ['status'],
+        },
+        AdminKycRecord: {
+          allOf: [
+            { $ref: '#/components/schemas/KycRecord' },
+            {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                userId: { type: 'string' },
+                reviewedBy: { type: 'string' },
+                reviewedAt: { type: 'string', format: 'date-time' },
+              },
+              required: ['id', 'userId'],
+            },
+          ],
+        },
+        SubmitKycRequest: {
+          type: 'object',
+          properties: {
+            aadharNumber: { type: 'string', pattern: '^\\d{12}$', example: '123456789012' },
+            aadharImageKey: { type: 'string', description: 'Key returned by POST /api/uploads/presign' },
+            panNumber: { type: 'string', pattern: '^[A-Z]{5}\\d{4}[A-Z]$', example: 'ABCDE1234F' },
+            panImageKey: { type: 'string', description: 'Key returned by POST /api/uploads/presign' },
+            dateOfBirth: { type: 'string', format: 'date-time' },
+            address: { type: 'string', minLength: 1 },
+            photographKey: { type: 'string', description: 'Key returned by POST /api/uploads/presign' },
+            uan: { type: 'string', pattern: '^\\d{14}$', example: '12345678901234' },
+          },
+          required: ['aadharNumber', 'aadharImageKey', 'panNumber', 'panImageKey', 'address', 'photographKey'],
+        },
+        RejectKycRequest: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', minLength: 1, example: 'Aadhar photo is blurry and unreadable' },
+          },
+          required: ['reason'],
+        },
+        CriminalRecordCheck: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['pending', 'clear', 'flagged'] },
+            checkedAt: { type: 'string', format: 'date-time' },
+          },
+          required: ['status'],
+        },
+        SetCriminalRecordStatusRequest: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['pending', 'clear', 'flagged'] },
+          },
+          required: ['status'],
+        },
+        SubscriptionPlan: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'monthly' },
+            name: { type: 'string', example: 'Monthly plan' },
+            priceInRupees: { type: 'number', example: 10 },
+            intervalLabel: { type: 'string', example: 'month' },
+          },
+          required: ['id', 'name', 'priceInRupees', 'intervalLabel'],
+        },
+        Subscription: {
+          type: 'object',
+          properties: {
+            status: { type: 'string', enum: ['inactive', 'active', 'past_due', 'cancelled'] },
+            plan: { $ref: '#/components/schemas/SubscriptionPlan' },
+            startedAt: { type: 'string', format: 'date-time' },
+            renewsAt: { type: 'string', format: 'date-time' },
+          },
+          required: ['status', 'plan'],
+        },
+        CheckoutResult: {
+          type: 'object',
+          properties: {
+            razorpaySubscriptionId: { type: 'string', example: 'sub_00000000000001' },
+            shortUrl: { type: 'string', example: 'https://rzp.io/i/PWtAiEo' },
+          },
+          required: ['razorpaySubscriptionId', 'shortUrl'],
+        },
+        DashboardSummary: {
+          type: 'object',
+          properties: {
+            user: {
+              type: 'object',
+              properties: {
+                firstName: { type: 'string' },
+                lastName: { type: 'string' },
+                email: { type: 'string', format: 'email' },
+              },
+              required: ['firstName', 'lastName', 'email'],
+            },
+            kyc: { $ref: '#/components/schemas/KycRecord' },
+            criminalRecord: { $ref: '#/components/schemas/CriminalRecordCheck' },
+            subscription: { $ref: '#/components/schemas/Subscription' },
+          },
+          required: ['user', 'kyc', 'criminalRecord', 'subscription'],
         },
         AuthPayload: {
           type: 'object',
