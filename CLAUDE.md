@@ -12,15 +12,24 @@ validation, Winston logging, and Vitest tests. The project is **native ESM**
 (`"type": "module"`, `moduleResolution: bundler`). Full docs live in
 [`docs/`](./docs/README.md).
 
-The current API surface spans seven modules — `auth` (`/api/auth/*`:
+The current API surface spans eight modules — `auth` (`/api/auth/*`:
 register, verify-otp, resend-otp, login, refresh, logout, forgot-password,
-reset-password — the last two are OTP-based, not link/token-based), `users`
-(`/api/users/*`),
+reset-password, change-password — forgot/reset-password are OTP-based, not
+link/token-based; change-password is authenticated and verifies the current
+password instead), `users`
+(`/api/users/*`, including the one-time `PATCH /me/service-category` for a
+service_provider),
 `uploads` (`/api/uploads/*`, presigned S3 URLs), `kyc` (`/api/kyc/*` +
 `/api/admin/kyc/*`), `criminal-record` (`/api/criminal-record/*` +
 `/api/admin/criminal-record/*`), `subscriptions` (`/api/subscriptions/*`,
-Razorpay-backed), and `dashboard` (`/api/dashboard/*`, a read-only
-composition over the others). See [`docs/api-reference.md`](./docs/api-reference.md).
+Razorpay-backed), `dashboard` (`/api/dashboard/*`, a read-only
+composition over the others), and `service-providers`
+(`/api/service-providers`, the customer-facing directory of KYC-verified
+providers). Authorization beyond "authenticated or not" is enforced by CASL
+abilities (`@shared/authorization/ability.ts` + the `requireAbility`
+middleware) — kyc/criminal-record/subscription are `service_provider`-only,
+the directory is `customer`/`admin`-only, and `admin` can manage everything.
+See [`docs/api-reference.md`](./docs/api-reference.md).
 
 ## Architecture (respect the layering)
 

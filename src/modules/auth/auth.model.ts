@@ -8,6 +8,14 @@ import { Schema, model, type Types } from 'mongoose';
 
 export type UserRole = 'admin' | 'service_provider' | 'customer';
 
+/**
+ * The service a `service_provider` offers. Chosen once, right after
+ * registration (see `users.service.ts#setServiceCategory`) — `null` until
+ * then, and always `null` for `admin`/`customer`, who never go through that
+ * onboarding step.
+ */
+export type ServiceCategory = 'electrician' | 'plumber' | 'cleaner' | 'carpenter' | 'painter' | 'other';
+
 export interface UserRow {
   _id: Types.ObjectId;
   firstName: string;
@@ -15,6 +23,8 @@ export interface UserRow {
   email: string;
   password: string;
   role: UserRole;
+  serviceCategory: ServiceCategory | null;
+  phoneNumber: string | null;
   isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +41,18 @@ const userSchema = new Schema(
     // service") — admins are promoted directly in the database, never
     // self-registered.
     role: { type: String, enum: ['admin', 'service_provider', 'customer'], required: true },
+    // Set once, only by a service_provider, after registration (see
+    // users.routes.ts). Stays null for admin/customer and for a
+    // service_provider who hasn't completed that onboarding step yet.
+    serviceCategory: {
+      type: String,
+      enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],
+      default: null,
+    },
+    // Optional for every role — editable any time via PATCH /users/me, not
+    // part of the one-time onboarding step. Populated so a customer can
+    // reach a listed service_provider.
+    phoneNumber: { type: String, default: null, trim: true },
     isVerified: { type: Boolean, required: true, default: false },
   },
   { timestamps: true }

@@ -5,12 +5,13 @@ import { CriminalRecordRepository } from './criminal-record.repository';
 import { UserRepository } from '@modules/auth/user.repository';
 import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
-import { requireRole } from '@middleware/require-role';
+import { requireAbility } from '@middleware/require-ability';
 import { setCriminalRecordStatusSchema, userIdParamSchema } from './criminal-record.validator';
 
 /**
  * Criminal-record feature module: a read-only status for the user under
- * `/api/criminal-record/*`, admin-set results under
+ * `/api/criminal-record/*` (only `service_provider` goes through this
+ * onboarding gate — see `defineAbilitiesFor`), admin-set results under
  * `/api/admin/criminal-record/*` — mirrors the KYC module's user/admin route
  * split. There is no user-facing submission: the check itself happens
  * outside this app (a real vendor integration, deferred); an admin records
@@ -21,7 +22,8 @@ export const createCriminalRecordModule = (): { userRouter: Router; adminRouter:
   const users = new UserRepository();
   const criminalRecordService = new CriminalRecordService(criminalRecord);
   const controller = new CriminalRecordController(criminalRecordService);
-  const requireAdmin = requireRole(users, 'admin');
+  const requireProvider = requireAbility(users, 'read', 'CriminalRecord');
+  const requireAdmin = requireAbility(users, 'manage', 'all');
 
   const userRouter = Router();
 
@@ -41,8 +43,9 @@ export const createCriminalRecordModule = (): { userRouter: Router; adminRouter:
    *           application/json:
    *             schema: { $ref: '#/components/schemas/CriminalRecordCheck' }
    *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
    */
-  userRouter.get('/me', requireAuth, controller.me);
+  userRouter.get('/me', requireAuth, requireProvider, controller.me);
 
   const adminRouter = Router();
 

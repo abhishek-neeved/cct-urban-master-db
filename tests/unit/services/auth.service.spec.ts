@@ -17,6 +17,8 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   lastName: 'Lovelace',
   email: 'ada@example.com',
   role: 'customer',
+  serviceCategory: null,
+  phoneNumber: null,
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
@@ -42,12 +44,15 @@ describe('AuthService', () => {
   beforeEach(() => {
     users = {
       findById: vi.fn(),
+      findByIdWithPassword: vi.fn(),
       findByEmail: vi.fn(),
       findByEmailWithPassword: vi.fn(),
       create: vi.fn(),
       updatePassword: vi.fn(),
       updateProfile: vi.fn(),
+      setServiceCategory: vi.fn(),
       markVerified: vi.fn(),
+      findServiceProviders: vi.fn(),
     };
     refreshTokens = {
       create: vi.fn(),
@@ -500,6 +505,44 @@ describe('AuthService', () => {
       await expect(service.getProfile('507f1f77bcf86cd799439011')).rejects.toBeInstanceOf(
         UnauthorizedError
       );
+    });
+  });
+
+  describe('changePassword', () => {
+    const currentPassword = 'supersecret';
+    let record: UserWithPassword;
+
+    beforeEach(async () => {
+      record = { ...buildUser(), password: await hashPassword(currentPassword) };
+    });
+
+    it('verifies the current password, sets the new one, and revokes all sessions', async () => {
+      users.findByIdWithPassword.mockResolvedValue(record);
+
+      await service.changePassword(record.id, currentPassword, 'brand-new-password');
+
+      expect(users.updatePassword).toHaveBeenCalledWith(record.id, expect.any(String));
+      const [, newHash] = users.updatePassword.mock.calls[0];
+      expect(newHash).not.toBe(record.password);
+      expect(refreshTokens.deleteAllForUser).toHaveBeenCalledWith(record.id);
+    });
+
+    it('throws BadRequestError when the current password is wrong', async () => {
+      users.findByIdWithPassword.mockResolvedValue(record);
+
+      await expect(
+        service.changePassword(record.id, 'wrong-password', 'brand-new-password')
+      ).rejects.toBeInstanceOf(BadRequestError);
+      expect(users.updatePassword).not.toHaveBeenCalled();
+      expect(refreshTokens.deleteAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('throws UnauthorizedError when the account no longer exists', async () => {
+      users.findByIdWithPassword.mockResolvedValue(null);
+
+      await expect(
+        service.changePassword('missing', currentPassword, 'brand-new-password')
+      ).rejects.toBeInstanceOf(UnauthorizedError);
     });
   });
 });

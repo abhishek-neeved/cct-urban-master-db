@@ -1,20 +1,26 @@
-import { UserModel, type UserRow } from './auth.model';
+import { isValidObjectId } from 'mongoose';
+import { UserModel, type ServiceCategory, type UserRow } from './auth.model';
 import { BaseRepository } from '@shared/repositories/base.repository';
 import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.types';
 
 export interface UpdateUserProfileInput {
   firstName?: string;
   lastName?: string;
+  phoneNumber?: string;
 }
 
 export interface IUserRepository {
   findById(id: string): Promise<User | null>;
+  findByIdWithPassword(id: string): Promise<UserWithPassword | null>;
   findByEmail(email: string): Promise<User | null>;
   findByEmailWithPassword(email: string): Promise<UserWithPassword | null>;
   create(input: CreateUserInput): Promise<User>;
   updatePassword(userId: string, passwordHash: string): Promise<void>;
   updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null>;
+  setServiceCategory(userId: string, serviceCategory: ServiceCategory): Promise<User | null>;
   markVerified(userId: string): Promise<void>;
+  /** Onboarded service providers (serviceCategory set), optionally narrowed to one category. */
+  findServiceProviders(category?: ServiceCategory): Promise<User[]>;
 }
 
 /**
@@ -31,6 +37,12 @@ export class UserRepository
     super(UserModel, toUser, {
       duplicateKeyMessage: 'A user with this email already exists',
     });
+  }
+
+  async findByIdWithPassword(id: string): Promise<UserWithPassword | null> {
+    if (!isValidObjectId(id)) return null;
+    const row = await UserModel.findById(id).lean<UserRow>();
+    return row ? toUserWithPassword(row) : null;
   }
 
   async findByEmail(email: string): Promise<User | null> {
@@ -52,5 +64,16 @@ export class UserRepository
 
   async updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null> {
     return this.updateById(userId, input);
+  }
+
+  async setServiceCategory(userId: string, serviceCategory: ServiceCategory): Promise<User | null> {
+    return this.updateById(userId, { serviceCategory });
+  }
+
+  async findServiceProviders(category?: ServiceCategory): Promise<User[]> {
+    return this.find({
+      role: 'service_provider',
+      serviceCategory: category ?? { $ne: null },
+    });
   }
 }

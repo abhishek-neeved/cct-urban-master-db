@@ -59,6 +59,17 @@ const options: swaggerJSDoc.Options = {
             lastName: { type: 'string' },
             email: { type: 'string', format: 'email' },
             role: { type: 'string', enum: ['admin', 'service_provider', 'customer'] },
+            serviceCategory: {
+              type: 'string',
+              nullable: true,
+              enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other', null],
+              description: 'Only set for service_provider, and only after the one-time onboarding step.',
+            },
+            phoneNumber: {
+              type: 'string',
+              nullable: true,
+              description: 'Optional for every role, editable any time via PATCH /users/me.',
+            },
             isVerified: { type: 'boolean' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -69,6 +80,8 @@ const options: swaggerJSDoc.Options = {
             'lastName',
             'email',
             'role',
+            'serviceCategory',
+            'phoneNumber',
             'isVerified',
             'createdAt',
             'updatedAt',
@@ -76,11 +89,25 @@ const options: swaggerJSDoc.Options = {
         },
         UpdateProfileRequest: {
           type: 'object',
-          description: 'At least one of firstName/lastName must be provided.',
+          description: 'At least one of firstName/lastName/phoneNumber must be provided.',
           properties: {
             firstName: { type: 'string', minLength: 1, maxLength: 120 },
             lastName: { type: 'string', minLength: 1, maxLength: 120 },
+            phoneNumber: { type: 'string', pattern: '^\\+?[0-9]{7,15}$' },
           },
+        },
+        ServiceProviderListing: {
+          type: 'object',
+          properties: {
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            serviceCategory: {
+              type: 'string',
+              enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],
+            },
+            phoneNumber: { type: 'string', nullable: true },
+          },
+          required: ['firstName', 'lastName', 'serviceCategory', 'phoneNumber'],
         },
         PresignUploadRequest: {
           type: 'object',
@@ -204,6 +231,8 @@ const options: swaggerJSDoc.Options = {
         },
         DashboardSummary: {
           type: 'object',
+          description:
+            'kyc/criminalRecord/subscription are only present for a service_provider — a customer only books services and never goes through that onboarding.',
           properties: {
             user: {
               type: 'object',
@@ -211,14 +240,15 @@ const options: swaggerJSDoc.Options = {
                 firstName: { type: 'string' },
                 lastName: { type: 'string' },
                 email: { type: 'string', format: 'email' },
+                role: { type: 'string', enum: ['admin', 'service_provider', 'customer'] },
               },
-              required: ['firstName', 'lastName', 'email'],
+              required: ['firstName', 'lastName', 'email', 'role'],
             },
             kyc: { $ref: '#/components/schemas/KycRecord' },
             criminalRecord: { $ref: '#/components/schemas/CriminalRecordCheck' },
             subscription: { $ref: '#/components/schemas/Subscription' },
           },
-          required: ['user', 'kyc', 'criminalRecord', 'subscription'],
+          required: ['user'],
         },
         AuthPayload: {
           type: 'object',
@@ -251,6 +281,16 @@ const options: swaggerJSDoc.Options = {
             },
           },
           required: ['firstName', 'lastName', 'email', 'password', 'role'],
+        },
+        SetServiceCategoryRequest: {
+          type: 'object',
+          properties: {
+            serviceCategory: {
+              type: 'string',
+              enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],
+            },
+          },
+          required: ['serviceCategory'],
         },
         LoginRequest: {
           type: 'object',
@@ -308,6 +348,19 @@ const options: swaggerJSDoc.Options = {
             },
           },
           required: ['email', 'otp', 'password'],
+        },
+        ChangePasswordRequest: {
+          type: 'object',
+          properties: {
+            currentPassword: { type: 'string', minLength: 1, example: 'supersecret-123' },
+            newPassword: {
+              type: 'string',
+              minLength: 8,
+              maxLength: 128,
+              example: 'new-supersecret-456',
+            },
+          },
+          required: ['currentPassword', 'newPassword'],
         },
         ErrorResponse: {
           type: 'object',

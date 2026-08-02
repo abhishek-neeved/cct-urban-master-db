@@ -20,22 +20,22 @@ export class DashboardService {
   ) {}
 
   async getSummary(userId: string): Promise<DashboardSummary> {
-    const [user, kyc, criminalRecord, subscription] = await Promise.all([
-      this.users.findById(userId),
+    const user = await this.users.findById(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const profile = { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role };
+    if (user.role === 'customer') {
+      return { user: profile };
+    }
+
+    const [kyc, criminalRecord, subscription] = await Promise.all([
       this.kycService.getStatus(userId),
       this.criminalRecordService.getStatus(userId),
       this.subscriptionsService.getStatus(userId),
     ]);
 
-    if (!user) {
-      throw new NotFoundError('User');
-    }
-
-    return {
-      user: { firstName: user.firstName, lastName: user.lastName, email: user.email },
-      kyc,
-      criminalRecord,
-      subscription,
-    };
+    return { user: profile, kyc, criminalRecord, subscription };
   }
 }

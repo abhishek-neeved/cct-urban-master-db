@@ -86,4 +86,13 @@ export class AuthController {
     await this.authService.resetPassword(req.body.email, req.body.otp, req.body.password);
     res.status(StatusCodes.OK).json(success({ message: 'Password has been reset' }, req.id));
   });
+
+  changePassword: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    await this.authService.changePassword(
+      req.userId as string,
+      req.body.currentPassword,
+      req.body.newPassword
+    );
+    res.status(StatusCodes.OK).json(success({ message: 'Password changed' }, req.id));
+  });
 }

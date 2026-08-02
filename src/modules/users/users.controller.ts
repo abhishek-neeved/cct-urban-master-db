@@ -21,4 +21,12 @@ export class UsersController {
     const user = await this.usersService.updateProfile(req.userId as string, req.body);
     res.status(StatusCodes.OK).json(success({ user }, req.id));
   });
+
+  setServiceCategory: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const user = await this.usersService.setServiceCategory(
+      req.userId as string,
+      req.body.serviceCategory
+    );
+    res.status(StatusCodes.OK).json(success({ user }, req.id));
+  });
 }

@@ -14,6 +14,8 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   lastName: 'Lovelace',
   email: 'ada@example.com',
   role: 'customer',
+  serviceCategory: null,
+  phoneNumber: null,
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
@@ -40,8 +42,8 @@ describe('DashboardService', () => {
     );
   });
 
-  it('composes the profile, KYC, criminal-record, and subscription status', async () => {
-    users.findById.mockResolvedValue(buildUser());
+  it('composes the profile, KYC, criminal-record, and subscription status for a service provider', async () => {
+    users.findById.mockResolvedValue(buildUser({ role: 'service_provider' }));
     kycService.getStatus.mockResolvedValue({ status: 'verified' });
     criminalRecordService.getStatus.mockResolvedValue({ status: 'clear' });
     subscriptionsService.getStatus.mockResolvedValue({ status: 'active', plan: MONTHLY_PLAN });
@@ -49,7 +51,7 @@ describe('DashboardService', () => {
     const summary = await service.getSummary('u1');
 
     expect(summary).toEqual({
-      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
+      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', role: 'service_provider' },
       kyc: { status: 'verified' },
       criminalRecord: { status: 'clear' },
       subscription: { status: 'active', plan: MONTHLY_PLAN },
@@ -60,11 +62,21 @@ describe('DashboardService', () => {
     expect(subscriptionsService.getStatus).toHaveBeenCalledWith('u1');
   });
 
+  it('omits KYC/criminal-record/subscription for a customer, and never calls those services', async () => {
+    users.findById.mockResolvedValue(buildUser({ role: 'customer' }));
+
+    const summary = await service.getSummary('u1');
+
+    expect(summary).toEqual({
+      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com', role: 'customer' },
+    });
+    expect(kycService.getStatus).not.toHaveBeenCalled();
+    expect(criminalRecordService.getStatus).not.toHaveBeenCalled();
+    expect(subscriptionsService.getStatus).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundError when the user no longer exists', async () => {
     users.findById.mockResolvedValue(null);
-    kycService.getStatus.mockResolvedValue({ status: 'not_started' });
-    criminalRecordService.getStatus.mockResolvedValue({ status: 'pending' });
-    subscriptionsService.getStatus.mockResolvedValue({ status: 'inactive', plan: MONTHLY_PLAN });
 
     await expect(service.getSummary('missing')).rejects.toThrow(NotFoundError);
   });

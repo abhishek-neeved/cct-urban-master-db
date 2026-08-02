@@ -5,7 +5,7 @@ import { KycRepository } from './kyc.repository';
 import { UserRepository } from '@modules/auth/user.repository';
 import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
-import { requireRole } from '@middleware/require-role';
+import { requireAbility } from '@middleware/require-ability';
 import {
   listForReviewQuerySchema,
   rejectKycSchema,
@@ -14,17 +14,20 @@ import {
 } from './kyc.validator';
 
 /**
- * KYC feature module: user-facing submission/status under `/api/kyc/*`, admin
- * review under `/api/admin/kyc/*` — one obvious boundary for every role-gated
- * route, mirroring how `/api/auth/*` and `/api/users/*` are already split by
- * concern rather than by role inline in each route.
+ * KYC feature module: user-facing submission/status under `/api/kyc/*` (only
+ * `service_provider` goes through this onboarding gate — see
+ * `defineAbilitiesFor`), admin review under `/api/admin/kyc/*` — one obvious
+ * boundary for every ability-gated route, mirroring how `/api/auth/*` and
+ * `/api/users/*` are already split by concern rather than by role inline in
+ * each route.
  */
 export const createKycModule = (): { userRouter: Router; adminRouter: Router } => {
   const kyc = new KycRepository();
   const users = new UserRepository();
   const kycService = new KycService(kyc);
   const controller = new KycController(kycService);
-  const requireAdmin = requireRole(users, 'admin');
+  const requireProvider = requireAbility(users, 'read', 'Kyc');
+  const requireAdmin = requireAbility(users, 'manage', 'all');
 
   const userRouter = Router();
 
@@ -44,8 +47,9 @@ export const createKycModule = (): { userRouter: Router; adminRouter: Router } =
    *           application/json:
    *             schema: { $ref: '#/components/schemas/KycRecord' }
    *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
    */
-  userRouter.get('/me', requireAuth, controller.me);
+  userRouter.get('/me', requireAuth, requireProvider, controller.me);
 
   /**
    * @openapi
@@ -73,9 +77,16 @@ export const createKycModule = (): { userRouter: Router; adminRouter: Router } =
    *             schema: { $ref: '#/components/schemas/KycRecord' }
    *       400: { description: Already verified, or already pending review }
    *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
    *       422: { description: Validation failed }
    */
-  userRouter.post('/submit', requireAuth, validate({ body: submitKycSchema }), controller.submit);
+  userRouter.post(
+    '/submit',
+    requireAuth,
+    requireProvider,
+    validate({ body: submitKycSchema }),
+    controller.submit
+  );
 
   const adminRouter = Router();
 

@@ -302,6 +302,27 @@ export class AuthService {
     logger.info('Password reset', { userId: user.id });
   }
 
+  /**
+   * Authenticated change-password — verifies the caller's current password
+   * server-side before setting the new one, unlike `resetPassword` (which
+   * trusts a mailed OTP instead, for a caller who can't log in at all).
+   * Forces re-login everywhere afterwards, same as a reset.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const record = await this.users.findByIdWithPassword(userId);
+    if (!record) {
+      throw new UnauthorizedError('User no longer exists');
+    }
+    const matches = await comparePassword(currentPassword, record.password);
+    if (!matches) {
+      throw new BadRequestError('Current password is incorrect');
+    }
+    const passwordHash = await hashPassword(newPassword);
+    await this.users.updatePassword(userId, passwordHash);
+    await this.refreshTokens.deleteAllForUser(userId);
+    logger.info('Password changed', { userId });
+  }
+
   private async issueTokens(userId: string): Promise<AuthTokens> {
     const accessToken = signAccessToken(userId);
     const refreshToken = generateOpaqueToken();

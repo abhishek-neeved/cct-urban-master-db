@@ -3,22 +3,27 @@ import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionsRepository } from './subscriptions.repository';
 import { RazorpayGateway } from '@shared/services/payment-gateway.service';
+import { UserRepository } from '@modules/auth/user.repository';
 import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
+import { requireAbility } from '@middleware/require-ability';
 import { webhookBodySchema } from './subscriptions.validator';
 
 /**
  * Subscriptions feature module: checkout/status/cancel for the authenticated
- * user, plus the Razorpay webhook that's the only place status actually
- * changes (see subscriptions.service.ts). The webhook route has no
- * `requireAuth` — its trust boundary is the signature check in the
+ * user (only `service_provider` goes through this onboarding gate — see
+ * `defineAbilitiesFor`), plus the Razorpay webhook that's the only place
+ * status actually changes (see subscriptions.service.ts). The webhook route
+ * has no `requireAuth` — its trust boundary is the signature check in the
  * controller, not a user session.
  */
 export const createSubscriptionsModule = (): Router => {
   const subscriptions = new SubscriptionsRepository();
+  const users = new UserRepository();
   const gateway = new RazorpayGateway();
   const subscriptionsService = new SubscriptionsService(subscriptions, gateway);
   const controller = new SubscriptionsController(subscriptionsService, gateway);
+  const requireProvider = requireAbility(users, 'read', 'Subscription');
 
   const router = Router();
 
@@ -38,8 +43,9 @@ export const createSubscriptionsModule = (): Router => {
    *           application/json:
    *             schema: { $ref: '#/components/schemas/Subscription' }
    *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
    */
-  router.get('/me', requireAuth, controller.me);
+  router.get('/me', requireAuth, requireProvider, controller.me);
 
   /**
    * @openapi
@@ -62,9 +68,10 @@ export const createSubscriptionsModule = (): Router => {
    *           application/json:
    *             schema: { $ref: '#/components/schemas/CheckoutResult' }
    *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
    *       409: { description: Already has an active subscription }
    */
-  router.post('/checkout', requireAuth, controller.checkout);
+  router.post('/checkout', requireAuth, requireProvider, controller.checkout);
 
   /**
    * @openapi
@@ -87,8 +94,9 @@ export const createSubscriptionsModule = (): Router => {
    *                 message: { type: string, example: 'Subscription cancelled' }
    *       400: { description: No active subscription to cancel }
    *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
    */
-  router.post('/cancel', requireAuth, controller.cancel);
+  router.post('/cancel', requireAuth, requireProvider, controller.cancel);
 
   /**
    * @openapi

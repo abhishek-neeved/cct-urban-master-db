@@ -1,6 +1,6 @@
-import type { UserRow, UserRole } from './auth.model';
+import type { ServiceCategory, UserRow, UserRole } from './auth.model';
 
-export type { UserRole };
+export type { ServiceCategory, UserRole };
 
 /** Domain representation returned to callers — never includes the password. */
 export interface User {
@@ -9,6 +9,8 @@ export interface User {
   lastName: string;
   email: string;
   role: UserRole;
+  serviceCategory: ServiceCategory | null;
+  phoneNumber: string | null;
   isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -29,7 +31,16 @@ export interface CreateUserInput {
 /** The fields `toUser` needs — satisfied by a full `UserRow`. */
 type PublicUserRow = Pick<
   UserRow,
-  '_id' | 'firstName' | 'lastName' | 'email' | 'role' | 'isVerified' | 'createdAt' | 'updatedAt'
+  | '_id'
+  | 'firstName'
+  | 'lastName'
+  | 'email'
+  | 'role'
+  | 'serviceCategory'
+  | 'phoneNumber'
+  | 'isVerified'
+  | 'createdAt'
+  | 'updatedAt'
 >;
 
 export const toUser = (row: PublicUserRow): User => ({
@@ -38,6 +49,8 @@ export const toUser = (row: PublicUserRow): User => ({
   lastName: row.lastName,
   email: row.email,
   role: row.role,
+  serviceCategory: row.serviceCategory,
+  phoneNumber: row.phoneNumber,
   isVerified: row.isVerified,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,

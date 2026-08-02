@@ -7,6 +7,7 @@ import { createKycModule } from '@modules/kyc/kyc.routes';
 import { createCriminalRecordModule } from '@modules/criminal-record/criminal-record.routes';
 import { createSubscriptionsModule } from '@modules/subscriptions/subscriptions.routes';
 import { createDashboardModule } from '@modules/dashboard/dashboard.routes';
+import { createServiceProvidersModule } from '@modules/service-providers/service-providers.routes';
 import { createDocsModule } from '@modules/docs/docs.routes';
 
 /**
@@ -47,6 +48,8 @@ export const createApiRouter = (): Router => {
   router.use('/subscriptions', createSubscriptionsModule());
 
   router.use('/dashboard', createDashboardModule());
+
+  router.use('/service-providers', createServiceProvidersModule());
 
   return router;
 };

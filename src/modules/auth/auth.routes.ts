@@ -10,6 +10,7 @@ import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
 import { authLimiter } from '@middleware/rate-limit';
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   refreshTokenSchema,
@@ -261,6 +262,40 @@ export const createAuthModule = (): Router => {
    */
   // Protected: requires a valid access token.
   router.get('/me', requireAuth, controller.me);
+
+  /**
+   * @openapi
+   * /api/auth/change-password:
+   *   patch:
+   *     tags: [Auth]
+   *     summary: Change the authenticated user's password
+   *     description: >
+   *       Verifies `currentPassword` server-side before setting the new one —
+   *       unlike reset-password, which trusts a mailed OTP instead for a
+   *       caller who can't log in at all. Forces re-login on every other
+   *       session afterwards, same as a reset.
+   *     security:
+   *       - bearerAuth: []
+   *       - cookieAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+   *     responses:
+   *       200: { description: Password changed }
+   *       400: { description: Current password is incorrect }
+   *       401: { description: Missing/invalid access token }
+   *       422: { description: Validation failed }
+   *       429: { description: Too many requests }
+   */
+  router.patch(
+    '/change-password',
+    requireAuth,
+    authLimiter,
+    validate({ body: changePasswordSchema }),
+    controller.changePassword
+  );
 
   return router;
 };

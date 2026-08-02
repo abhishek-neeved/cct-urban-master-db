@@ -23,10 +23,13 @@ describe('KYC API (e2e)', () => {
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  const registerAndLogin = async (email: string): Promise<string> => {
+  const registerAndLogin = async (
+    email: string,
+    role: 'service_provider' | 'customer' = 'service_provider'
+  ): Promise<string> => {
     const registerRes = await request(app)
       .post('/api/auth/register')
-      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret', role: 'customer' });
+      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret', role });
     const otp = registerRes.body.data.otpDevCode as string;
     await request(app).post('/api/auth/verify-otp').send({ email, otp }).expect(200);
     const loginRes = await request(app)
@@ -53,6 +56,14 @@ describe('KYC API (e2e)', () => {
 
     it('rejects without a valid access token', async () => {
       await request(app).get('/api/kyc/me').expect(401);
+    });
+
+    it('rejects a customer with 403', async () => {
+      const accessToken = await registerAndLogin('customer1@example.com', 'customer');
+
+      const res = await request(app).get('/api/kyc/me').set('Authorization', `Bearer ${accessToken}`);
+
+      expect(res.status).toBe(403);
     });
   });
 
@@ -112,6 +123,17 @@ describe('KYC API (e2e)', () => {
 
     it('rejects without a valid access token', async () => {
       await request(app).post('/api/kyc/submit').send(validSubmission).expect(401);
+    });
+
+    it('rejects a customer with 403', async () => {
+      const accessToken = await registerAndLogin('customer2@example.com', 'customer');
+
+      const res = await request(app)
+        .post('/api/kyc/submit')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(validSubmission);
+
+      expect(res.status).toBe(403);
     });
   });
 

@@ -312,4 +312,71 @@ describe('Auth API (e2e)', () => {
       .send({ email: 'nobody@example.com', otp: '123456', password: 'a-new-password' });
     expect(res.status).toBe(400);
   });
+
+  describe('PATCH /api/auth/change-password', () => {
+    const changePassword = (accessToken: string, body: Record<string, unknown>) =>
+      request(app)
+        .patch('/api/auth/change-password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(body);
+
+    it('changes the password when the current one is correct, and revokes other sessions', async () => {
+      await registerAndVerify();
+      const loginRes = await login();
+      const accessToken = loginRes.body.data.accessToken as string;
+      const refreshToken = loginRes.body.data.refreshToken as string;
+
+      const res = await changePassword(accessToken, {
+        currentPassword: credentials.password,
+        newPassword: 'a-new-password',
+      });
+      expect(res.status).toBe(200);
+
+      // Old password no longer works; new one does.
+      const oldLogin = await login();
+      expect(oldLogin.status).toBe(401);
+      const newLogin = await request(app)
+        .post('/api/auth/login')
+        .send({ email: credentials.email, password: 'a-new-password' });
+      expect(newLogin.status).toBe(200);
+
+      // The refresh token from before the change was revoked.
+      const refreshAttempt = await request(app).post('/api/auth/refresh').send({ refreshToken });
+      expect(refreshAttempt.status).toBe(401);
+    });
+
+    it('rejects the wrong current password with 400, and leaves the password unchanged', async () => {
+      await registerAndVerify();
+      const loginRes = await login();
+      const accessToken = loginRes.body.data.accessToken as string;
+
+      const res = await changePassword(accessToken, {
+        currentPassword: 'not-the-real-password',
+        newPassword: 'a-new-password',
+      });
+      expect(res.status).toBe(400);
+
+      const stillWorks = await login();
+      expect(stillWorks.status).toBe(200);
+    });
+
+    it('rejects without a valid access token', async () => {
+      await request(app)
+        .patch('/api/auth/change-password')
+        .send({ currentPassword: 'x', newPassword: 'a-new-password' })
+        .expect(401);
+    });
+
+    it('rejects a new password shorter than 8 characters with 422', async () => {
+      await registerAndVerify();
+      const loginRes = await login();
+      const accessToken = loginRes.body.data.accessToken as string;
+
+      const res = await changePassword(accessToken, {
+        currentPassword: credentials.password,
+        newPassword: 'short',
+      });
+      expect(res.status).toBe(422);
+    });
+  });
 });

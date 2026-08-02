@@ -14,10 +14,13 @@ describe('Dashboard API (e2e)', () => {
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  const registerAndLogin = async (email: string): Promise<string> => {
+  const registerAndLogin = async (
+    email: string,
+    role: 'service_provider' | 'customer' = 'service_provider'
+  ): Promise<string> => {
     const registerRes = await request(app)
       .post('/api/auth/register')
-      .send({ firstName: 'Ada', lastName: 'Lovelace', email, password: 'supersecret', role: 'customer' });
+      .send({ firstName: 'Ada', lastName: 'Lovelace', email, password: 'supersecret', role });
     const otp = registerRes.body.data.otpDevCode as string;
     await request(app).post('/api/auth/verify-otp').send({ email, otp }).expect(200);
     const loginRes = await request(app)
@@ -26,7 +29,7 @@ describe('Dashboard API (e2e)', () => {
     return loginRes.body.data.accessToken as string;
   };
 
-  it('composes profile, default KYC/criminal-record/subscription statuses for a brand-new user', async () => {
+  it('composes profile, default KYC/criminal-record/subscription statuses for a brand-new service provider', async () => {
     const accessToken = await registerAndLogin('dash1@example.com');
 
     const res = await request(app)
@@ -35,13 +38,26 @@ describe('Dashboard API (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
-      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'dash1@example.com' },
+      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'dash1@example.com', role: 'service_provider' },
       kyc: { status: 'not_started' },
       criminalRecord: { status: 'pending' },
       subscription: {
         status: 'inactive',
         plan: { id: 'monthly', name: 'Monthly plan', priceInRupees: 10, intervalLabel: 'month' },
       },
+    });
+  });
+
+  it('omits KYC/criminal-record/subscription for a customer', async () => {
+    const accessToken = await registerAndLogin('dash-customer@example.com', 'customer');
+
+    const res = await request(app)
+      .get('/api/dashboard/me')
+      .set('Authorization', `Bearer ${accessToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({
+      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'dash-customer@example.com', role: 'customer' },
     });
   });
 
