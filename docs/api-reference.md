@@ -25,7 +25,7 @@ includes an `X-Request-Id` header for tracing.
 | ---- | --------------------------------------------------- |
 | 200  | OK                                                  |
 | 201  | Created                                             |
-| 400  | Bad request (e.g. invalid/expired reset token or OTP) |
+| 400  | Bad request (e.g. invalid/expired verification code) |
 | 401  | Unauthorized (bad credentials / invalid token)      |
 | 403  | Forbidden (account not verified)                    |
 | 404  | Route not found                                     |
@@ -107,19 +107,20 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 
 **Body**
 
-| Field       | Rules                          |
-| ----------- | ------------------------------ |
-| `firstName` | required, 1–120 chars          |
-| `lastName`  | required, 1–120 chars          |
-| `email`     | required, valid email, unique  |
-| `password`  | required, 8–128 chars          |
+| Field       | Rules                                                                   |
+| ----------- | ------------------------------------------------------------------------ |
+| `firstName` | required, 1–120 chars                                                   |
+| `lastName`  | required, 1–120 chars                                                   |
+| `email`     | required, valid email, unique                                          |
+| `password`  | required, 8–128 chars                                                   |
+| `role`      | required, one of `service_provider`, `customer` (the signup account-type choice — "provide a service" vs. "book a service"; `admin` is never self-registered) |
 
 **201** — no tokens are issued; `otpDevCode` is present only outside production.
 ```json
 {
   "success": true,
   "data": {
-    "user": { "id": "…", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "role": "user", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
+    "user": { "id": "…", "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com", "role": "customer", "isVerified": false, "createdAt": "…", "updatedAt": "…" },
     "otpDevCode": "042317"
   },
   "requestId": "…"
@@ -131,7 +132,7 @@ OTP is emailed. Verify via `POST /api/auth/verify-otp`, then call
 ```bash
 curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"firstName":"Ada","lastName":"Lovelace","email":"ada@example.com","password":"supersecret"}'
+  -d '{"firstName":"Ada","lastName":"Lovelace","email":"ada@example.com","password":"supersecret","role":"customer"}'
 ```
 
 ### `POST /api/auth/verify-otp`
@@ -217,46 +218,48 @@ body.
 
 ### `POST /api/auth/forgot-password`
 
-Request a password-reset link. **Always returns 200**, whether or not the email
-exists (no account enumeration). The reset link is emailed (logged by the stub
-email service in dev). Outside production the raw token is also returned as
-`resetToken` for testing.
+Request a password-reset OTP. **Always returns 200**, whether or not the email
+exists (no account enumeration). The 6-digit code is emailed (logged by the
+stub email service in dev), reusing the same OTP infrastructure as
+registration but scoped to its own `RESET` type — it can never collide with,
+or be consumed by, a pending registration OTP for the same user. Outside
+production the raw code is also returned as `otpDevCode` for testing.
 
 **Body:** `email`
 
 **200**
 ```json
-{ "success": true, "data": { "message": "If an account with that email exists, a reset link has been sent", "resetToken": "<dev-only>" }, "requestId": "…" }
-```
-
-### `GET /api/auth/verify-forgot-password-token`
-
-Check whether a reset token is valid and unexpired (e.g. before rendering the
-reset form).
-
-**Query:** `token`
-
-**200** → `{ "valid": true }` (or `false`)
-
-```bash
-curl "http://localhost:3000/api/auth/verify-forgot-password-token?token=<token>"
+{ "success": true, "data": { "message": "If an account with that email exists, a verification code has been sent", "otpDevCode": "<dev-only>" }, "requestId": "…" }
 ```
 
 ### `POST /api/auth/reset-password`
 
-Set a new password using a valid reset token. On success the token is consumed
-and **all** of the user's refresh tokens are revoked (forcing re-login).
+Set a new password using the emailed OTP. **One-shot** — the OTP itself is
+both the proof of mailbox ownership and the authorization to set the new
+password; there is no separate verify-then-reset step. Every failure (wrong
+code, unknown email, no active reset OTP) resolves to the same generic 400
+(no enumeration), and a wrong code counts against the same attempt cap as
+registration OTPs — once exhausted, request a fresh code via
+`forgot-password` again. On success the OTP is consumed and **all** of the
+user's refresh tokens are revoked (forcing re-login).
 
 **Body**
 
-| Field      | Rules                 |
-| ---------- | --------------------- |
-| `token`    | required              |
-| `password` | required, 8–128 chars |
+| Field      | Rules                  |
+| ---------- | ----------------------- |
+| `email`    | required, valid email   |
+| `otp`      | required, 6-digit code  |
+| `password` | required, 8–128 chars   |
 
 **200** → `{ "message": "Password has been reset" }`
 
-**Errors:** `400` invalid or expired token · `422` invalid body
+**Errors:** `400` invalid or expired verification code · `422` invalid body · `429` too many requests
+
+```bash
+curl -X POST http://localhost:3000/api/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"ada@example.com","otp":"042317","password":"brand-new-password"}'
+```
 
 ### `GET /api/auth/me`
 
@@ -270,7 +273,7 @@ cookie set by `login`/`refresh` (the header takes precedence if both are sent).
 ```json
 {
   "success": true,
-  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "role": "user", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
+  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "role": "customer", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
   "requestId": "…"
 }
 ```
@@ -292,8 +295,9 @@ superset of `GET /api/auth/me`, kept as a separate module boundary for
 profile-shaped concerns (and future fields like a profile photo) as they're
 added.
 
-Every user now carries a **`role`** (`"user"` | `"admin"`, defaults to
-`"user"`) alongside the existing fields. Roles are never set at registration —
+Every user carries a **`role`** — `"service_provider"` or `"customer"`, set
+directly at registration from the signup account-type choice ("provide a
+service" vs. "book a service"), or `"admin"`, which is never self-registered —
 promoting a user to `admin` is a direct data change today, until an admin
 management endpoint exists. Role-gated routes look the role up fresh on every
 request rather than trusting a claim embedded in the access token, so a role
@@ -311,7 +315,7 @@ Bearer/cookie rules as `GET /api/auth/me`.
 ```json
 {
   "success": true,
-  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "role": "user", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
+  "data": { "user": { "id": "…", "firstName": "Jane", "lastName": "Doe", "email": "jane.doe@example.com", "role": "customer", "isVerified": true, "createdAt": "…", "updatedAt": "…" } },
   "requestId": "…"
 }
 ```

@@ -7,6 +7,9 @@ export const registerSchema = z.object({
   lastName: z.string().min(1, 'Last name is required').max(120),
   email: z.string().email('A valid email is required'),
   password,
+  // The signup account-type choice — "provide a service" vs. "book a
+  // service". `admin` is excluded: never self-registered.
+  role: z.enum(['service_provider', 'customer']),
 });
 
 export const loginSchema = z.object({
@@ -35,10 +38,7 @@ export const forgotPasswordSchema = z.object({
 });
 
 export const resetPasswordSchema = z.object({
-  token: z.string().min(1, 'Token is required'),
+  email: z.string().email('A valid email is required'),
+  otp: z.string().regex(/^\d{6}$/, 'OTP must be a 6-digit code'),
   password,
-});
-
-export const verifyResetTokenQuerySchema = z.object({
-  token: z.string().min(1, 'Token is required'),
 });

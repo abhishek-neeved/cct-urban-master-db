@@ -29,14 +29,8 @@ const envSchema = z
     LOG_FORMAT: z.enum(LOG_FORMATS).optional(),
     DATABASE_URL: z.string().min(1).default(ENV_DEFAULTS.DATABASE_URL),
 
-    // This API's own base URL (used in Swagger's server list, not in emails).
+    // This API's own base URL (used in Swagger's server list).
     APP_URL: z.string().url().default(ENV_DEFAULTS.APP_URL),
-    // web-app's public URL — used to build the password-reset link emailed to
-    // users (@modules/auth). Mobile has no equivalent web page to link to;
-    // the mobile app's forgot-password flow relies on this same web page
-    // being reachable from a phone browser, since a mobileapp:// deep link
-    // can't be delivered reliably via email across all mail clients.
-    WEB_APP_URL: z.string().url().default(ENV_DEFAULTS.WEB_APP_URL),
 
     // Auth — a strong JWT_ACCESS_SECRET is REQUIRED in production (see refine below).
     JWT_ACCESS_SECRET: z.string().min(1).default(DEFAULT_ACCESS_SECRET),
@@ -52,13 +46,7 @@ const envSchema = z
       .min(BCRYPT_SALT_ROUNDS.min)
       .max(BCRYPT_SALT_ROUNDS.max)
       .default(BCRYPT_SALT_ROUNDS.default),
-    PASSWORD_RESET_TTL_MINUTES: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(ENV_DEFAULTS.PASSWORD_RESET_TTL_MINUTES),
-
-    // How long an account-verification OTP stays valid.
+    // How long an account-verification or password-reset OTP stays valid.
     OTP_TTL_MINUTES: z.coerce.number().int().positive().default(ENV_DEFAULTS.OTP_TTL_MINUTES),
     // Minimum wait between OTP resends (blunts email spamming / brute-force setup).
     OTP_RESEND_COOLDOWN_SECONDS: z.coerce

@@ -1,9 +1,10 @@
 import { env, isProduction } from '@config/env';
 import { LOGIN_MAX_ATTEMPTS, OTP_MAX_ATTEMPTS } from '@config/constants';
+import type { UserRole } from './auth.model';
 import { User } from './user.types';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
-import { IOtpRepository } from './otp.repository';
+import { IOtpRepository, OtpType } from './otp.repository';
 import { ILoginAttemptRepository } from './login-attempt.repository';
 import { IEmailService } from '@shared/services/email.service';
 import { comparePassword, getDummyPasswordHash, hashPassword } from '@utils/password.util';
@@ -31,6 +32,8 @@ export interface RegisterInput {
   lastName: string;
   email: string;
   password: string;
+  /** The signup account-type choice — "provide a service" vs. "book a service". */
+  role: Exclude<UserRole, 'admin'>;
 }
 
 export interface RegisterResult {
@@ -78,10 +81,11 @@ export class AuthService {
       lastName: input.lastName,
       email: input.email,
       password: passwordHash,
+      role: input.role,
     });
-    const rawOtp = await this.issueOtp(user.id);
+    const rawOtp = await this.issueOtp(user.id, 'REGISTER');
     await this.email.sendOtpEmail(user.email, rawOtp);
-    logger.info('User registered', { userId: user.id });
+    logger.info('User registered', { userId: user.id, role: user.role });
     return { user, devOtp: isProduction ? undefined : rawOtp };
   }
 
@@ -98,7 +102,7 @@ export class AuthService {
     if (!user || user.isVerified) {
       throw invalid;
     }
-    const otp = await this.otps.findActiveForUser(user.id);
+    const otp = await this.otps.findActiveForUser(user.id, 'REGISTER');
     if (!otp) {
       throw invalid;
     }
@@ -106,12 +110,12 @@ export class AuthService {
       const attempts = await this.otps.recordFailedAttempt(otp.id);
       if (attempts >= OTP_MAX_ATTEMPTS) {
         // Too many wrong guesses — burn the code so it can't be brute-forced.
-        await this.otps.deleteForUser(user.id);
+        await this.otps.deleteForUser(user.id, 'REGISTER');
       }
       throw invalid;
     }
     await this.users.markVerified(user.id);
-    await this.otps.deleteForUser(user.id);
+    await this.otps.deleteForUser(user.id, 'REGISTER');
     logger.info('Account verified', { userId: user.id });
   }
 
@@ -125,7 +129,7 @@ export class AuthService {
     if (!user || user.isVerified) {
       return undefined;
     }
-    const active = await this.otps.findActiveForUser(user.id);
+    const active = await this.otps.findActiveForUser(user.id, 'REGISTER');
     if (active) {
       const ageMs = Date.now() - active.createdAt.getTime();
       if (ageMs < env.OTP_RESEND_COOLDOWN_SECONDS * SECOND_MS) {
@@ -133,7 +137,7 @@ export class AuthService {
         return undefined;
       }
     }
-    const rawOtp = await this.issueOtp(user.id);
+    const rawOtp = await this.issueOtp(user.id, 'REGISTER');
     await this.email.sendOtpEmail(user.email, rawOtp);
     logger.info('Verification OTP resent', { userId: user.id });
     return isProduction ? undefined : rawOtp;
@@ -248,7 +252,7 @@ export class AuthService {
 
   /**
    * Always resolves the same way whether or not the email exists (no account
-   * enumeration). Returns the raw reset token only in non-production, as a
+   * enumeration). Returns the raw OTP only in non-production, as a
    * convenience for local testing.
    */
   async forgotPassword(email: string): Promise<string | undefined> {
@@ -256,33 +260,42 @@ export class AuthService {
     if (!user) {
       return undefined;
     }
-    const rawToken = generateOpaqueToken(32);
-    const expiresAt = new Date(Date.now() + env.PASSWORD_RESET_TTL_MINUTES * MINUTE_MS);
-    await this.users.setPasswordResetToken(user.id, hashToken(rawToken), expiresAt);
-
-    // Points at web-app, not this API's own APP_URL — a plain web page is
-    // reachable from any device's mail client (including a phone's), unlike
-    // a mobileapp:// deep link, which not all mail apps render as tappable.
-    const resetUrl = `${env.WEB_APP_URL}/reset-password?token=${rawToken}`;
-    await this.email.sendPasswordResetEmail(user.email, resetUrl);
-
-    return isProduction ? undefined : rawToken;
+    const rawOtp = await this.issueOtp(user.id, 'RESET');
+    await this.email.sendOtpEmail(user.email, rawOtp);
+    logger.info('Password-reset OTP sent', { userId: user.id });
+    return isProduction ? undefined : rawOtp;
   }
 
-  async verifyResetToken(token: string): Promise<boolean> {
-    const user = await this.users.findByValidResetToken(hashToken(token));
-    return user !== null;
-  }
+  /**
+   * One-shot: the OTP is both the proof of mailbox ownership and the
+   * authorization to set the new password — no separate reset-session token.
+   * Every failure resolves to the same generic error (no account/OTP-state
+   * enumeration), mirroring `verifyOtp`'s attempt-cap behavior.
+   */
+  async resetPassword(email: string, code: string, newPassword: string): Promise<void> {
+    const invalid = new BadRequestError('Invalid or expired verification code');
 
-  async resetPassword(token: string, newPassword: string): Promise<void> {
-    const user = await this.users.findByValidResetToken(hashToken(token));
+    const user = await this.users.findByEmail(email);
     if (!user) {
-      throw new BadRequestError('Invalid or expired password reset token');
+      throw invalid;
     }
+    const otp = await this.otps.findActiveForUser(user.id, 'RESET');
+    if (!otp) {
+      throw invalid;
+    }
+    if (otp.codeHash !== hashToken(code)) {
+      const attempts = await this.otps.recordFailedAttempt(otp.id);
+      if (attempts >= OTP_MAX_ATTEMPTS) {
+        await this.otps.deleteForUser(user.id, 'RESET');
+      }
+      throw invalid;
+    }
+    await this.otps.deleteForUser(user.id, 'RESET');
+
     const passwordHash = await hashPassword(newPassword);
     await this.users.updatePassword(user.id, passwordHash);
-    // Clear any login lockout — proving control of the mailbox via the reset
-    // token is a stronger proof of ownership than the password ever was.
+    // Clear any login lockout — proving control of the mailbox via the OTP is
+    // a stronger proof of ownership than the password ever was.
     await this.loginAttempts.reset(user.email);
     // Force re-login everywhere after a password change.
     await this.refreshTokens.deleteAllForUser(user.id);
@@ -297,11 +310,11 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  /** Generate a fresh OTP, replacing any existing one, and return the raw code. */
-  private async issueOtp(userId: string): Promise<string> {
+  /** Generate a fresh OTP for the given flow, replacing any existing one, and return the raw code. */
+  private async issueOtp(userId: string, type: OtpType): Promise<string> {
     const rawOtp = generateNumericOtp();
     const expiresAt = new Date(Date.now() + env.OTP_TTL_MINUTES * MINUTE_MS);
-    await this.otps.replaceForUser(userId, hashToken(rawOtp), expiresAt);
+    await this.otps.replaceForUser(userId, type, hashToken(rawOtp), expiresAt);
     return rawOtp;
   }
 }

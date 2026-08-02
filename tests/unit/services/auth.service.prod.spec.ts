@@ -27,21 +27,21 @@ const buildUser = () => ({
 });
 
 describe('AuthService (production)', () => {
-  it('forgotPassword does not return the raw token in production', async () => {
+  it('forgotPassword does not return the raw OTP in production', async () => {
     const users = {
       findByEmail: vi.fn().mockResolvedValue({
         id: '00000000-0000-4000-8000-000000000000',
         firstName: 'Ada',
         lastName: 'Lovelace',
         email: 'ada@example.com',
+        role: 'customer',
         isVerified: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
-      setPasswordResetToken: vi.fn(),
     } as unknown as Mocked<IUserRepository>;
     const refreshTokens = {} as Mocked<IRefreshTokenRepository>;
-    const otps = {} as Mocked<IOtpRepository>;
+    const otps = { replaceForUser: vi.fn() } as unknown as Mocked<IOtpRepository>;
     const loginAttempts = {} as Mocked<ILoginAttemptRepository>;
     const email = {
       sendPasswordResetEmail: vi.fn(),
@@ -49,11 +49,11 @@ describe('AuthService (production)', () => {
     } as unknown as Mocked<IEmailService>;
 
     const service = new AuthService(users, refreshTokens, otps, loginAttempts, email);
-    const token = await service.forgotPassword('jane.doe@example.com');
+    const otp = await service.forgotPassword('jane.doe@example.com');
 
-    expect(token).toBeUndefined();
-    expect(users.setPasswordResetToken).toHaveBeenCalledTimes(1);
-    expect(email.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    expect(otp).toBeUndefined();
+    expect(otps.replaceForUser).toHaveBeenCalledTimes(1);
+    expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
   });
 
   it('register does not return the raw OTP in production', async () => {
@@ -76,6 +76,7 @@ describe('AuthService (production)', () => {
       lastName: 'Doe',
       email: 'jane.doe@example.com',
       password: 'supersecret',
+      role: 'customer',
     });
 
     // The OTP is still issued and emailed, but never returned to the caller.

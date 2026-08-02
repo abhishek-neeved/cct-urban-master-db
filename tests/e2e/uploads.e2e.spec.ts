@@ -12,6 +12,7 @@ const credentials = {
   lastName: 'Lovelace',
   email: 'ada@example.com',
   password: 'supersecret',
+  role: 'customer',
 };
 
 describe('Uploads API (e2e)', () => {

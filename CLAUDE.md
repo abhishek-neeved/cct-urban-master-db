@@ -14,7 +14,8 @@ validation, Winston logging, and Vitest tests. The project is **native ESM**
 
 The current API surface spans seven modules — `auth` (`/api/auth/*`:
 register, verify-otp, resend-otp, login, refresh, logout, forgot-password,
-verify-forgot-password-token, reset-password), `users` (`/api/users/*`),
+reset-password — the last two are OTP-based, not link/token-based), `users`
+(`/api/users/*`),
 `uploads` (`/api/uploads/*`, presigned S3 URLs), `kyc` (`/api/kyc/*` +
 `/api/admin/kyc/*`), `criminal-record` (`/api/criminal-record/*` +
 `/api/admin/criminal-record/*`), `subscriptions` (`/api/subscriptions/*`,

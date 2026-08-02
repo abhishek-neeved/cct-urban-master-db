@@ -6,7 +6,7 @@ import { Schema, model, type Types } from 'mongoose';
  * only ever read through this module's repositories.
  */
 
-export type UserRole = 'user' | 'admin';
+export type UserRole = 'admin' | 'service_provider' | 'customer';
 
 export interface UserRow {
   _id: Types.ObjectId;
@@ -16,8 +16,6 @@ export interface UserRow {
   password: string;
   role: UserRole;
   isVerified: boolean;
-  passwordResetToken: string | null;
-  passwordResetExpires: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,10 +26,12 @@ const userSchema = new Schema(
     lastName: { type: String, required: true, trim: true, maxlength: 120 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['user', 'admin'], required: true, default: 'user' },
+    // Set once at registration from the signup account-type choice
+    // (service_provider = "provide a service", customer = "book a
+    // service") — admins are promoted directly in the database, never
+    // self-registered.
+    role: { type: String, enum: ['admin', 'service_provider', 'customer'], required: true },
     isVerified: { type: Boolean, required: true, default: false },
-    passwordResetToken: { type: String, default: null },
-    passwordResetExpires: { type: Date, default: null },
   },
   { timestamps: true }
 );

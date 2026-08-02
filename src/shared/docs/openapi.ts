@@ -58,7 +58,7 @@ const options: swaggerJSDoc.Options = {
             firstName: { type: 'string' },
             lastName: { type: 'string' },
             email: { type: 'string', format: 'email' },
-            role: { type: 'string', enum: ['user', 'admin'] },
+            role: { type: 'string', enum: ['admin', 'service_provider', 'customer'] },
             isVerified: { type: 'boolean' },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -244,8 +244,13 @@ const options: swaggerJSDoc.Options = {
             lastName: { type: 'string', minLength: 1, maxLength: 120 },
             email: { type: 'string', format: 'email' },
             password: { type: 'string', minLength: 8, maxLength: 128 },
+            role: {
+              type: 'string',
+              enum: ['service_provider', 'customer'],
+              description: 'The signup account-type choice — "provide a service" vs. "book a service". `admin` is never self-registered.',
+            },
           },
-          required: ['firstName', 'lastName', 'email', 'password'],
+          required: ['firstName', 'lastName', 'email', 'password', 'role'],
         },
         LoginRequest: {
           type: 'object',
@@ -291,8 +296,10 @@ const options: swaggerJSDoc.Options = {
         },
         ResetPasswordRequest: {
           type: 'object',
+          description: 'One-shot — the OTP is both the proof of mailbox ownership and the authorization to set the new password.',
           properties: {
-            token: { type: 'string', minLength: 1, example: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6' },
+            email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
+            otp: { type: 'string', pattern: '^\\d{6}$', example: '042317' },
             password: {
               type: 'string',
               minLength: 8,
@@ -300,7 +307,7 @@ const options: swaggerJSDoc.Options = {
               example: 'new-supersecret-456',
             },
           },
-          required: ['token', 'password'],
+          required: ['email', 'otp', 'password'],
         },
         ErrorResponse: {
           type: 'object',

@@ -2,13 +2,12 @@ import { isValidObjectId } from 'mongoose';
 import { OtpModel } from './auth.model';
 
 /**
- * This repository only ever issues/consumes the account-verification flow, so
- * every query is scoped to this type. The `otps` collection is shared across
- * REGISTER/FORGOT/TWO_FACTOR flows (indexed on `{ userId, type }`), so
- * omitting `type` here would let a registration OTP collide with — or be
- * clobbered by — another flow's code for the same user.
+ * The `otps` collection is shared across flows (indexed on `{ userId, type }`)
+ * so a registration OTP can't collide with — or be clobbered by — a
+ * password-reset code for the same user. Every query is explicitly scoped by
+ * `type` for that reason.
  */
-const OTP_TYPE = 'REGISTER';
+export type OtpType = 'REGISTER' | 'RESET';
 
 /** A stored OTP, mapped to the domain (no MongoDB details leak upward). */
 export interface OtpRecord {
@@ -19,22 +18,22 @@ export interface OtpRecord {
 }
 
 export interface IOtpRepository {
-  /** The single unexpired OTP for a user, or `null`. */
-  findActiveForUser(userId: string): Promise<OtpRecord | null>;
-  /** Replace any existing OTP for the user with a fresh one (single active OTP). */
-  replaceForUser(userId: string, codeHash: string, expiresAt: Date): Promise<void>;
+  /** The single unexpired OTP for a user and flow, or `null`. */
+  findActiveForUser(userId: string, type: OtpType): Promise<OtpRecord | null>;
+  /** Replace any existing OTP for the user and flow with a fresh one (single active OTP per type). */
+  replaceForUser(userId: string, type: OtpType, codeHash: string, expiresAt: Date): Promise<void>;
   /** Record a wrong-code attempt and return the new attempt count. */
   recordFailedAttempt(otpId: string): Promise<number>;
-  /** Remove every OTP for a user (on success or lockout). */
-  deleteForUser(userId: string): Promise<void>;
+  /** Remove every OTP for a user and flow (on success or lockout). */
+  deleteForUser(userId: string, type: OtpType): Promise<void>;
 }
 
-/** Stores account-verification OTPs by SHA-256 hash. At most one OTP is active per user (per `OTP_TYPE`) at a time. */
+/** Stores OTPs by SHA-256 hash. At most one OTP is active per user per `type` at a time. */
 export class OtpRepository implements IOtpRepository {
-  async findActiveForUser(userId: string): Promise<OtpRecord | null> {
+  async findActiveForUser(userId: string, type: OtpType): Promise<OtpRecord | null> {
     const doc = await OtpModel.findOne({
       userId,
-      type: OTP_TYPE,
+      type,
       expiresAt: { $gt: new Date() },
     }).lean();
     return doc
@@ -47,9 +46,9 @@ export class OtpRepository implements IOtpRepository {
       : null;
   }
 
-  async replaceForUser(userId: string, codeHash: string, expiresAt: Date): Promise<void> {
-    await OtpModel.deleteMany({ userId, type: OTP_TYPE });
-    await OtpModel.create({ userId, type: OTP_TYPE, codeHash, expiresAt });
+  async replaceForUser(userId: string, type: OtpType, codeHash: string, expiresAt: Date): Promise<void> {
+    await OtpModel.deleteMany({ userId, type });
+    await OtpModel.create({ userId, type, codeHash, expiresAt });
   }
 
   async recordFailedAttempt(otpId: string): Promise<number> {
@@ -62,7 +61,7 @@ export class OtpRepository implements IOtpRepository {
     return doc ? doc.attempts : 0;
   }
 
-  async deleteForUser(userId: string): Promise<void> {
-    await OtpModel.deleteMany({ userId, type: OTP_TYPE });
+  async deleteForUser(userId: string, type: OtpType): Promise<void> {
+    await OtpModel.deleteMany({ userId, type });
   }
 }

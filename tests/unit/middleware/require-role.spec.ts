@@ -10,7 +10,7 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   firstName: 'Ada',
   lastName: 'Lovelace',
   email: 'ada@example.com',
-  role: 'user',
+  role: 'customer',
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
@@ -36,7 +36,7 @@ describe('requireRole', () => {
   });
 
   it('rejects with ForbiddenError when the user has a disallowed role', async () => {
-    users.findById.mockResolvedValue(buildUser({ role: 'user' }));
+    users.findById.mockResolvedValue(buildUser({ role: 'customer' }));
     const middleware = requireRole(users as unknown as IUserRepository, 'admin');
 
     await middleware({ userId: 'u1' } as Request, {} as Response, next);

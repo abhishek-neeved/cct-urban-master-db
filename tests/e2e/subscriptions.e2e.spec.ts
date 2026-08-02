@@ -65,7 +65,7 @@ describe('Subscriptions API (e2e)', () => {
   const registerAndLogin = async (email: string): Promise<string> => {
     const registerRes = await request(app)
       .post('/api/auth/register')
-      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret' });
+      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret', role: 'customer' });
     const otp = registerRes.body.data.otpDevCode as string;
     await request(app).post('/api/auth/verify-otp').send({ email, otp }).expect(200);
     const loginRes = await request(app)

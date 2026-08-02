@@ -17,12 +17,13 @@ export interface User {
 /** Domain user plus the password hash, for internal auth checks only. */
 export type UserWithPassword = User & { password: string };
 
-/** Input to persist a new user (password is already hashed by the service). */
+/** Input to persist a new user (password is already hashed by the service). Role is set directly from the signup account-type choice — `admin` is never self-registered. */
 export interface CreateUserInput {
   firstName: string;
   lastName: string;
   email: string;
   password: string;
+  role: Exclude<UserRole, 'admin'>;
 }
 
 /** The fields `toUser` needs — satisfied by a full `UserRow`. */

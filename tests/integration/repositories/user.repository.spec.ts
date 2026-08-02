@@ -1,5 +1,4 @@
 import { UserRepository } from '@modules/auth/user.repository';
-import { hashToken } from '@utils/token.util';
 import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 
 const ABSENT_ID = '000000000000000000000000';
@@ -15,12 +14,14 @@ describe('UserRepository (integration)', () => {
     repository = new UserRepository();
   });
 
-  const seed = () =>
+  const seed = (overrides: Partial<Parameters<UserRepository['create']>[0]> = {}) =>
     repository.create({
       firstName: 'Ada',
       lastName: 'Lovelace',
       email: 'ada@example.com',
       password: 'hashed-pw',
+      role: 'customer',
+      ...overrides,
     });
 
   it('creates a user and finds it by id (without exposing the password)', async () => {
@@ -47,6 +48,7 @@ describe('UserRepository (integration)', () => {
       lastName: 'Lovelace',
       email: 'Ada@Example.com',
       password: 'hashed-pw',
+      role: 'customer',
     });
 
     await expect(repository.findByEmail('ada@example.com')).resolves.not.toBeNull();
@@ -64,33 +66,21 @@ describe('UserRepository (integration)', () => {
     await expect(repository.findById(ABSENT_ID)).resolves.toBeNull();
   });
 
-  it('stores a reset token and finds it only while unexpired', async () => {
+  it('updates the password', async () => {
     const user = await seed();
-    const tokenHash = hashToken('raw-token');
-
-    await repository.setPasswordResetToken(user.id, tokenHash, new Date(Date.now() + 60_000));
-    await expect(repository.findByValidResetToken(tokenHash)).resolves.not.toBeNull();
-
-    // Expired token must not match.
-    await repository.setPasswordResetToken(user.id, tokenHash, new Date(Date.now() - 60_000));
-    await expect(repository.findByValidResetToken(tokenHash)).resolves.toBeNull();
-  });
-
-  it('updates the password and clears the reset token', async () => {
-    const user = await seed();
-    const tokenHash = hashToken('raw-token');
-    await repository.setPasswordResetToken(user.id, tokenHash, new Date(Date.now() + 60_000));
 
     await repository.updatePassword(user.id, 'new-hashed-pw');
 
     const withPassword = await repository.findByEmailWithPassword('ada@example.com');
     expect(withPassword?.password).toBe('new-hashed-pw');
-    await expect(repository.findByValidResetToken(tokenHash)).resolves.toBeNull();
   });
 
-  it('defaults new users to the "user" role', async () => {
-    const created = await seed();
-    expect(created.role).toBe('user');
+  it('persists the role chosen at registration (service_provider or customer)', async () => {
+    const provider = await seed({ email: 'provider@example.com', role: 'service_provider' });
+    const customer = await seed({ email: 'customer@example.com', role: 'customer' });
+
+    expect(provider.role).toBe('service_provider');
+    expect(customer.role).toBe('customer');
   });
 
   it('updates profile fields and returns the updated domain user', async () => {

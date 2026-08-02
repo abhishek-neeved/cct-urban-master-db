@@ -13,7 +13,7 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   firstName: 'Ada',
   lastName: 'Lovelace',
   email: 'ada@example.com',
-  role: 'user',
+  role: 'customer',
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),

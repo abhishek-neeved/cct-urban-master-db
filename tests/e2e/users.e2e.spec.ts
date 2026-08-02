@@ -8,6 +8,7 @@ const credentials = {
   lastName: 'Lovelace',
   email: 'ada@example.com',
   password: 'supersecret',
+  role: 'customer',
 };
 
 describe('Users API (e2e)', () => {
@@ -42,7 +43,7 @@ describe('Users API (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.user.email).toBe(credentials.email);
-    expect(res.body.data.user.role).toBe('user');
+    expect(res.body.data.user.role).toBe('customer');
     expect(res.body.data.user).not.toHaveProperty('password');
   });
 

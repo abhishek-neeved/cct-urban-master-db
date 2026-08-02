@@ -12,8 +12,6 @@ export interface IUserRepository {
   findByEmail(email: string): Promise<User | null>;
   findByEmailWithPassword(email: string): Promise<UserWithPassword | null>;
   create(input: CreateUserInput): Promise<User>;
-  setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
-  findByValidResetToken(tokenHash: string): Promise<User | null>;
   updatePassword(userId: string, passwordHash: string): Promise<void>;
   updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null>;
   markVerified(userId: string): Promise<void>;
@@ -44,25 +42,8 @@ export class UserRepository
     return row ? toUserWithPassword(row) : null;
   }
 
-  async setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
-    await UserModel.updateOne(
-      { _id: userId },
-      { passwordResetToken: tokenHash, passwordResetExpires: expiresAt }
-    );
-  }
-
-  async findByValidResetToken(tokenHash: string): Promise<User | null> {
-    return this.findOne({
-      passwordResetToken: tokenHash,
-      passwordResetExpires: { $gt: new Date() },
-    });
-  }
-
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    await UserModel.updateOne(
-      { _id: userId },
-      { password: passwordHash, passwordResetToken: null, passwordResetExpires: null }
-    );
+    await UserModel.updateOne({ _id: userId }, { password: passwordHash });
   }
 
   async markVerified(userId: string): Promise<void> {
