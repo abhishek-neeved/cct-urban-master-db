@@ -5,7 +5,6 @@ import {
   DEFAULT_ACCESS_SECRET,
   DEFAULT_RAZORPAY_KEY_ID,
   DEFAULT_RAZORPAY_KEY_SECRET,
-  DEFAULT_RAZORPAY_PLAN_ID,
   DEFAULT_RAZORPAY_WEBHOOK_SECRET,
   ENV_DEFAULTS,
   LOG_FORMATS,
@@ -81,13 +80,10 @@ const envSchema = z
     // override that doesn't support it.
     S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
 
-    // Razorpay (see @modules/subscriptions). Test-mode keys (rzp_test_...) work
-    // against the same API in dev — there's no separate sandbox host.
+    // Razorpay (see @modules/onboarding-fee). Test-mode keys (rzp_test_...)
+    // work against the same API in dev — there's no separate sandbox host.
     RAZORPAY_KEY_ID: z.string().min(1).default(DEFAULT_RAZORPAY_KEY_ID),
     RAZORPAY_KEY_SECRET: z.string().min(1).default(DEFAULT_RAZORPAY_KEY_SECRET),
-    // The Plan created once via the Razorpay dashboard/API for the ₹10/month
-    // plan — not created programmatically by this app.
-    RAZORPAY_PLAN_ID: z.string().min(1).default(DEFAULT_RAZORPAY_PLAN_ID),
     // Shared secret configured on the webhook endpoint in the Razorpay
     // dashboard; used to verify `X-Razorpay-Signature` on incoming webhooks.
     RAZORPAY_WEBHOOK_SECRET: z.string().min(1).default(DEFAULT_RAZORPAY_WEBHOOK_SECRET),
@@ -129,12 +125,11 @@ const envSchema = z
     }
 
     // Never boot production still pointed at placeholder Razorpay config — a
-    // real key/secret/plan/webhook-secret must be set, same guard shape as
+    // real key/secret/webhook-secret must be set, same guard shape as
     // JWT_ACCESS_SECRET above.
     const razorpayDefaults: Array<[keyof typeof val, string]> = [
       ['RAZORPAY_KEY_ID', DEFAULT_RAZORPAY_KEY_ID],
       ['RAZORPAY_KEY_SECRET', DEFAULT_RAZORPAY_KEY_SECRET],
-      ['RAZORPAY_PLAN_ID', DEFAULT_RAZORPAY_PLAN_ID],
       ['RAZORPAY_WEBHOOK_SECRET', DEFAULT_RAZORPAY_WEBHOOK_SECRET],
     ];
     if (val.NODE_ENV === 'production') {

@@ -1,16 +1,14 @@
 import { vi, type Mocked } from 'vitest';
 import { KycService } from '@modules/kyc/kyc.service';
 import type { IKycRepository } from '@modules/kyc/kyc.repository';
+import type { KycVerificationService } from '@modules/kyc/kyc-verification.service';
 import type { AdminKycRecord, KycRecord, SubmitKycInput } from '@modules/kyc/kyc.types';
 import { BadRequestError, NotFoundError } from '@utils/errors';
 
 const buildSubmission = (): SubmitKycInput => ({
   aadharNumber: '123456789012',
-  aadharImageKey: 'kyc-aadhar/u1/a',
   panNumber: 'ABCDE1234F',
-  panImageKey: 'kyc-pan/u1/b',
   address: '221B Baker Street',
-  photographKey: 'kyc-photo/u1/c',
 });
 
 const buildRecord = (overrides: Partial<KycRecord> = {}): KycRecord => ({
@@ -29,6 +27,7 @@ const buildAdminRecord = (overrides: Partial<AdminKycRecord> = {}): AdminKycReco
 
 describe('KycService', () => {
   let kyc: Mocked<IKycRepository>;
+  let verification: Mocked<Pick<KycVerificationService, 'isAadharVerified' | 'isPanVerified'>>;
   let service: KycService;
 
   beforeEach(() => {
@@ -39,7 +38,11 @@ describe('KycService', () => {
       approve: vi.fn(),
       reject: vi.fn(),
     };
-    service = new KycService(kyc);
+    verification = {
+      isAadharVerified: vi.fn().mockResolvedValue(true),
+      isPanVerified: vi.fn().mockResolvedValue(true),
+    };
+    service = new KycService(kyc, verification as unknown as KycVerificationService);
   });
 
   describe('getStatus', () => {
@@ -58,13 +61,15 @@ describe('KycService', () => {
   });
 
   describe('submit', () => {
-    it('creates a fresh submission when no record exists', async () => {
+    it('creates a fresh submission when no record exists and both docs are verified', async () => {
       kyc.findByUserId.mockResolvedValue(null);
       const created = buildRecord();
       kyc.upsertSubmission.mockResolvedValue(created);
 
       const result = await service.submit('u1', buildSubmission());
 
+      expect(verification.isAadharVerified).toHaveBeenCalledWith('u1', '123456789012');
+      expect(verification.isPanVerified).toHaveBeenCalledWith('u1', 'ABCDE1234F');
       expect(kyc.upsertSubmission).toHaveBeenCalledWith('u1', buildSubmission());
       expect(result).toEqual(created);
     });
@@ -87,6 +92,22 @@ describe('KycService', () => {
 
     it('rejects resubmission while already pending', async () => {
       kyc.findByUserId.mockResolvedValue(buildRecord({ status: 'pending' }));
+
+      await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
+      expect(kyc.upsertSubmission).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the Aadhaar number has not been verified', async () => {
+      kyc.findByUserId.mockResolvedValue(null);
+      verification.isAadharVerified.mockResolvedValue(false);
+
+      await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
+      expect(kyc.upsertSubmission).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the PAN has not been verified', async () => {
+      kyc.findByUserId.mockResolvedValue(null);
+      verification.isPanVerified.mockResolvedValue(false);
 
       await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
       expect(kyc.upsertSubmission).not.toHaveBeenCalled();

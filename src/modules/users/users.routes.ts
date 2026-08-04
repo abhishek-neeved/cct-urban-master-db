@@ -75,11 +75,10 @@ export const createUsersModule = (): Router => {
    * /api/users/me/service-category:
    *   patch:
    *     tags: [Users]
-   *     summary: Set the authenticated service provider's service category (one-time)
+   *     summary: Set or change the authenticated service provider's service category
    *     description: >
-   *       Only callable by a `service_provider`, and only once — this is the
-   *       onboarding step right after registration where a provider declares
-   *       what service they offer. Rejects with 400 if already set.
+   *       Only callable by a `service_provider`. Editable any time from the
+   *       profile page — not a one-time onboarding step.
    *     security:
    *       - bearerAuth: []
    *       - cookieAuth: []
@@ -97,7 +96,6 @@ export const createUsersModule = (): Router => {
    *               type: object
    *               properties:
    *                 user: { $ref: '#/components/schemas/User' }
-   *       400: { description: Service category has already been set }
    *       401: { description: Missing/invalid access token }
    *       403: { description: Caller is not a service provider }
    *       404: { description: User no longer exists }

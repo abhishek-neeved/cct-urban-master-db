@@ -8,19 +8,21 @@ import type { UserRole } from '@modules/auth/user.types';
  * via `/me` semantics). Extend the subject union as new modules need gating.
  */
 export type Action = 'manage' | 'read' | 'create' | 'update';
-export type Subject = 'Kyc' | 'CriminalRecord' | 'Subscription' | 'AdminReview' | 'ServiceProviderDirectory' | 'all';
+export type Subject =
+  'Kyc' | 'CriminalRecord' | 'OnboardingFee' | 'AdminReview' | 'ServiceProviderDirectory' | 'all';
 
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
 /**
  * Single source of truth for what each role may do. `admin` can manage
  * everything, including the admin-review actions. `service_provider` is the
- * only role that goes through onboarding (KYC, criminal-record check,
- * subscription) — that's the gate the platform puts a paid provider through
- * before they can be booked. `customer` only books services — they can't
- * touch the onboarding modules, but they can read the provider directory
- * (that's how they find someone to book); a `service_provider` has no reason
- * to browse the directory themselves, so it's read-only for admin/customer.
+ * only role that goes through onboarding (KYC, criminal-record check, the
+ * one-time onboarding fee) — that's the gate the platform puts a paid
+ * provider through before they can be booked. `customer` only books
+ * services — they can't touch the onboarding modules, but they can read the
+ * provider directory (that's how they find someone to book); a
+ * `service_provider` has no reason to browse the directory themselves, so
+ * it's read-only for admin/customer.
  */
 export const defineAbilitiesFor = (role: UserRole): AppAbility => {
   const { can, build } = new AbilityBuilder<AppAbility>(createMongoAbility);
@@ -30,7 +32,7 @@ export const defineAbilitiesFor = (role: UserRole): AppAbility => {
       can('manage', 'all');
       break;
     case 'service_provider':
-      can(['read', 'create', 'update'], ['Kyc', 'CriminalRecord', 'Subscription']);
+      can(['read', 'create', 'update'], ['Kyc', 'CriminalRecord', 'OnboardingFee']);
       break;
     case 'customer':
       can('read', 'ServiceProviderDirectory');

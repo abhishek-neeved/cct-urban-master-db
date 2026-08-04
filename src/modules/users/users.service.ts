@@ -1,6 +1,6 @@
 import type { IUserRepository } from '@modules/auth/user.repository';
 import type { ServiceCategory, User } from '@modules/auth/user.types';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@utils/errors';
+import { ForbiddenError, NotFoundError } from '@utils/errors';
 
 export interface UpdateProfileInput {
   firstName?: string;
@@ -34,10 +34,9 @@ export class UsersService {
   }
 
   /**
-   * One-time onboarding step for a `service_provider` — set once right after
-   * registration, not editable afterwards (a provider who picked the wrong
-   * category re-registers rather than switching, since there's no review
-   * flow yet for a category change).
+   * Editable any time from the profile page — not a one-time onboarding step.
+   * Still `service_provider`-only: a `customer` never declares a service
+   * category.
    */
   async setServiceCategory(userId: string, serviceCategory: ServiceCategory): Promise<User> {
     const user = await this.users.findById(userId);
@@ -46,9 +45,6 @@ export class UsersService {
     }
     if (user.role !== 'service_provider') {
       throw new ForbiddenError('Only service providers can set a service category');
-    }
-    if (user.serviceCategory !== null) {
-      throw new BadRequestError('Service category has already been set');
     }
 
     const updated = await this.users.setServiceCategory(userId, serviceCategory);

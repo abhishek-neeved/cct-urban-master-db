@@ -24,10 +24,25 @@ describe('env config', () => {
 
   it('loads a .env file when VITEST is not set (simulates a real process boot)', async () => {
     // '' is falsy, so `!process.env.VITEST` takes the branch a real (non-test)
-    // process boot would take, exercising the dotenv.config() call.
-    vi.stubEnv('VITEST', '');
-    vi.stubEnv('NODE_ENV', 'development');
-    await expect(loadEnv()).resolves.toBeDefined();
+    // process boot would take, exercising the dotenv.config() call. dotenv
+    // writes straight into `process.env`, which `vi.unstubAllEnvs()` in
+    // `afterEach` does NOT undo (it only reverts `vi.stubEnv` calls) — so any
+    // var a developer's local .env happens to set (e.g. real Razorpay
+    // credentials) would otherwise leak into every later test in this file.
+    // Snapshot and restore the exact keys dotenv can touch to keep this test
+    // hermetic regardless of what's in the machine's own .env.
+    const keysDotenvMightSet = Object.keys(process.env);
+    try {
+      vi.stubEnv('VITEST', '');
+      vi.stubEnv('NODE_ENV', 'development');
+      await expect(loadEnv()).resolves.toBeDefined();
+    } finally {
+      for (const key of Object.keys(process.env)) {
+        if (!keysDotenvMightSet.includes(key)) {
+          delete process.env[key];
+        }
+      }
+    }
   });
 
   it('throws on an invalid environment (unknown NODE_ENV)', async () => {
@@ -59,7 +74,6 @@ describe('env config', () => {
   const stubProductionRazorpay = (): void => {
     vi.stubEnv('RAZORPAY_KEY_ID', 'rzp_live_real');
     vi.stubEnv('RAZORPAY_KEY_SECRET', 'a-real-secret');
-    vi.stubEnv('RAZORPAY_PLAN_ID', 'plan_real123');
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'a-real-webhook-secret');
   };
 
@@ -104,25 +118,27 @@ describe('env config', () => {
     vi.stubEnv('NODE_ENV', 'development');
     const { env } = await loadEnv();
     expect(env.RAZORPAY_KEY_ID).toBe('rzp_test_placeholder');
-    expect(env.RAZORPAY_PLAN_ID).toBe('plan_placeholder');
+    expect(env.RAZORPAY_KEY_SECRET).toBe('dev-razorpay-secret-change-me');
   });
 
   it.each([
     ['RAZORPAY_KEY_ID', 'rzp_test_placeholder'],
     ['RAZORPAY_KEY_SECRET', 'dev-razorpay-secret-change-me'],
-    ['RAZORPAY_PLAN_ID', 'plan_placeholder'],
     ['RAZORPAY_WEBHOOK_SECRET', 'dev-webhook-secret-change-me'],
-  ])('rejects a production boot that leaves %s at its dev placeholder', async (key, placeholder) => {
-    vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('JWT_ACCESS_SECRET', 'x'.repeat(40));
-    vi.stubEnv('CORS_ORIGINS', 'https://app.example.com');
-    stubProductionRazorpay();
-    // Explicitly re-set just this one var back to its dev placeholder value —
-    // stubProductionRazorpay() above already gave every var a real value, so
-    // this isolates the one field the refine should catch.
-    vi.stubEnv(key, placeholder);
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await expect(loadEnv()).rejects.toThrow('Invalid environment configuration');
-    errSpy.mockRestore();
-  });
+  ])(
+    'rejects a production boot that leaves %s at its dev placeholder',
+    async (key, placeholder) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('JWT_ACCESS_SECRET', 'x'.repeat(40));
+      vi.stubEnv('CORS_ORIGINS', 'https://app.example.com');
+      stubProductionRazorpay();
+      // Explicitly re-set just this one var back to its dev placeholder value —
+      // stubProductionRazorpay() above already gave every var a real value, so
+      // this isolates the one field the refine should catch.
+      vi.stubEnv(key, placeholder);
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await expect(loadEnv()).rejects.toThrow('Invalid environment configuration');
+      errSpy.mockRestore();
+    }
+  );
 });

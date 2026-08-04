@@ -9,12 +9,12 @@ import { Schema, model, type Types } from 'mongoose';
 export type UserRole = 'admin' | 'service_provider' | 'customer';
 
 /**
- * The service a `service_provider` offers. Chosen once, right after
- * registration (see `users.service.ts#setServiceCategory`) — `null` until
- * then, and always `null` for `admin`/`customer`, who never go through that
- * onboarding step.
+ * The service a `service_provider` offers. Set and changed any time from the
+ * profile page (see `users.service.ts#setServiceCategory`) — `null` until
+ * first set, and always `null` for `admin`/`customer`.
  */
-export type ServiceCategory = 'electrician' | 'plumber' | 'cleaner' | 'carpenter' | 'painter' | 'other';
+export type ServiceCategory =
+  'electrician' | 'plumber' | 'cleaner' | 'carpenter' | 'painter' | 'other';
 
 export interface UserRow {
   _id: Types.ObjectId;
@@ -36,14 +36,14 @@ const userSchema = new Schema(
     lastName: { type: String, required: true, trim: true, maxlength: 120 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
-    // Set once at registration from the signup account-type choice
-    // (service_provider = "provide a service", customer = "book a
-    // service") — admins are promoted directly in the database, never
-    // self-registered.
+    // Every self-registered account is a service_provider (see
+    // auth.service.ts#register) — admins are promoted directly in the
+    // database, never self-registered; customer accounts aren't created via
+    // self-registration today either.
     role: { type: String, enum: ['admin', 'service_provider', 'customer'], required: true },
-    // Set once, only by a service_provider, after registration (see
+    // Set/changed any time by a service_provider from the profile page (see
     // users.routes.ts). Stays null for admin/customer and for a
-    // service_provider who hasn't completed that onboarding step yet.
+    // service_provider who hasn't picked one yet.
     serviceCategory: {
       type: String,
       enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],

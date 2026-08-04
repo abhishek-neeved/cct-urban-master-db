@@ -4,17 +4,28 @@ import { z } from 'zod';
 // disagree on what "valid" means here.
 const AADHAR_PATTERN = /^\d{12}$/;
 const PAN_PATTERN = /^[A-Z]{5}\d{4}[A-Z]$/;
-const UAN_PATTERN = /^\d{14}$/;
+const OTP_PATTERN = /^\d{6}$/;
 
 export const submitKycSchema = z.object({
   aadharNumber: z.string().regex(AADHAR_PATTERN, 'Aadhar number must be exactly 12 digits'),
-  aadharImageKey: z.string().min(1, 'Aadhar photo is required'),
   panNumber: z.string().regex(PAN_PATTERN, 'PAN must be in the format ABCDE1234F'),
-  panImageKey: z.string().min(1, 'PAN photo is required'),
-  dateOfBirth: z.coerce.date().optional(),
   address: z.string().min(1, 'Address is required'),
-  photographKey: z.string().min(1, 'Photograph is required'),
-  uan: z.union([z.literal(''), z.string().regex(UAN_PATTERN, 'UAN must be exactly 14 digits')]).optional(),
+});
+
+export const requestAadharVerificationSchema = z.object({
+  aadharNumber: z.string().regex(AADHAR_PATTERN, 'Aadhar number must be exactly 12 digits'),
+});
+
+export const verifyAadharOtpSchema = z.object({
+  otp: z.string().regex(OTP_PATTERN, 'OTP must be a 6-digit code'),
+});
+
+export const requestPanVerificationSchema = z.object({
+  panNumber: z.string().regex(PAN_PATTERN, 'PAN must be in the format ABCDE1234F'),
+});
+
+export const verifyPanOtpSchema = z.object({
+  otp: z.string().regex(OTP_PATTERN, 'OTP must be a 6-digit code'),
 });
 
 export const listForReviewQuerySchema = z.object({

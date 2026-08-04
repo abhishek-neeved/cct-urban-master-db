@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { Application } from 'express';
 import { createApp } from '@/app';
+import { UserModel } from '@modules/auth/auth.model';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
 const credentials = {
@@ -8,7 +9,6 @@ const credentials = {
   lastName: 'Lovelace',
   email: 'ada@example.com',
   password: 'supersecret',
-  role: 'customer',
 };
 
 describe('Users API (e2e)', () => {
@@ -21,9 +21,9 @@ describe('Users API (e2e)', () => {
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  const registerAndLogin = async (
-    overrides: Partial<typeof credentials> = {}
-  ): Promise<string> => {
+  // Every self-registered account is a service_provider — there is no
+  // account-type choice at signup anymore.
+  const registerAndLogin = async (overrides: Partial<typeof credentials> = {}): Promise<string> => {
     const payload = { ...credentials, ...overrides };
     const registerRes = await request(app).post('/api/auth/register').send(payload);
     const otp = registerRes.body.data.otpDevCode as string;
@@ -43,7 +43,7 @@ describe('Users API (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.user.email).toBe(credentials.email);
-    expect(res.body.data.user.role).toBe('customer');
+    expect(res.body.data.user.role).toBe('service_provider');
     expect(res.body.data.user).not.toHaveProperty('password');
   });
 
@@ -109,11 +109,8 @@ describe('Users API (e2e)', () => {
   });
 
   describe('PATCH /api/users/me/service-category', () => {
-    it('sets the category for a service provider, once', async () => {
-      const accessToken = await registerAndLogin({
-        email: 'provider1@example.com',
-        role: 'service_provider',
-      });
+    it('sets the category for a service provider', async () => {
+      const accessToken = await registerAndLogin({ email: 'provider1@example.com' });
 
       const res = await request(app)
         .patch('/api/users/me/service-category')
@@ -129,11 +126,8 @@ describe('Users API (e2e)', () => {
       expect(reread.body.data.user.serviceCategory).toBe('plumber');
     });
 
-    it('rejects setting it a second time with 400', async () => {
-      const accessToken = await registerAndLogin({
-        email: 'provider2@example.com',
-        role: 'service_provider',
-      });
+    it('allows changing an already-set category — editable any time', async () => {
+      const accessToken = await registerAndLogin({ email: 'provider2@example.com' });
       await request(app)
         .patch('/api/users/me/service-category')
         .set('Authorization', `Bearer ${accessToken}`)
@@ -144,11 +138,13 @@ describe('Users API (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ serviceCategory: 'electrician' });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      expect(res.body.data.user.serviceCategory).toBe('electrician');
     });
 
     it('rejects a customer with 403', async () => {
-      const accessToken = await registerAndLogin({ email: 'customer1@example.com', role: 'customer' });
+      const accessToken = await registerAndLogin({ email: 'customer1@example.com' });
+      await UserModel.updateOne({ email: 'customer1@example.com' }, { role: 'customer' });
 
       const res = await request(app)
         .patch('/api/users/me/service-category')
@@ -159,10 +155,7 @@ describe('Users API (e2e)', () => {
     });
 
     it('rejects an invalid category with 422', async () => {
-      const accessToken = await registerAndLogin({
-        email: 'provider3@example.com',
-        role: 'service_provider',
-      });
+      const accessToken = await registerAndLogin({ email: 'provider3@example.com' });
 
       const res = await request(app)
         .patch('/api/users/me/service-category')

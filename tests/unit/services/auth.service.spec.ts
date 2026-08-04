@@ -77,7 +77,7 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('creates a user with a hashed password and the chosen role, issues an OTP, and does not issue tokens', async () => {
+    it('creates a service_provider with a hashed password, issues an OTP, and does not issue tokens', async () => {
       const user = buildUser({ isVerified: false, role: 'service_provider' });
       users.findByEmail.mockResolvedValue(null);
       users.create.mockResolvedValue(user);
@@ -87,7 +87,6 @@ describe('AuthService', () => {
         lastName: user.lastName,
         email: user.email,
         password: 'supersecret',
-        role: 'service_provider',
       });
 
       expect(result.user).toEqual(user);
@@ -121,7 +120,6 @@ describe('AuthService', () => {
           lastName: 'Y',
           email: 'ada@example.com',
           password: 'supersecret',
-          role: 'customer',
         })
       ).rejects.toBeInstanceOf(ConflictError);
       expect(users.create).not.toHaveBeenCalled();

@@ -66,6 +66,18 @@ describe('UserRepository (integration)', () => {
     await expect(repository.findById(ABSENT_ID)).resolves.toBeNull();
   });
 
+  it('returns the password hash from the id-based password-aware lookup', async () => {
+    const user = await seed();
+
+    const withPassword = await repository.findByIdWithPassword(user.id);
+    expect(withPassword?.password).toBe('hashed-pw');
+  });
+
+  it('returns null from the id-based password-aware lookup for a missing / invalid id', async () => {
+    await expect(repository.findByIdWithPassword('not-a-uuid')).resolves.toBeNull();
+    await expect(repository.findByIdWithPassword(ABSENT_ID)).resolves.toBeNull();
+  });
+
   it('updates the password', async () => {
     const user = await seed();
 
@@ -94,7 +106,9 @@ describe('UserRepository (integration)', () => {
   });
 
   it('returns null from updateProfile for a missing / invalid id', async () => {
-    await expect(repository.updateProfile('not-a-uuid', { firstName: 'Grace' })).resolves.toBeNull();
+    await expect(
+      repository.updateProfile('not-a-uuid', { firstName: 'Grace' })
+    ).resolves.toBeNull();
     await expect(repository.updateProfile(ABSENT_ID, { firstName: 'Grace' })).resolves.toBeNull();
   });
 });

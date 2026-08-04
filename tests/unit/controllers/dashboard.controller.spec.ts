@@ -2,7 +2,6 @@ import { vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 import { DashboardController } from '@modules/dashboard/dashboard.controller';
 import type { DashboardService } from '@modules/dashboard/dashboard.service';
-import { MONTHLY_PLAN } from '@modules/subscriptions/subscriptions.types';
 
 const mockRes = () =>
   ({
@@ -21,9 +20,11 @@ describe('DashboardController', () => {
       user: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
       kyc: { status: 'verified' as const },
       criminalRecord: { status: 'clear' as const },
-      subscription: { status: 'active' as const, plan: MONTHLY_PLAN },
+      onboardingFee: { status: 'unpaid' as const, amountInRupees: 10 },
     };
-    const service = { getSummary: vi.fn().mockResolvedValue(summary) } as unknown as DashboardService;
+    const service = {
+      getSummary: vi.fn().mockResolvedValue(summary),
+    } as unknown as DashboardService;
     const controller = new DashboardController(service);
     const res = mockRes();
 

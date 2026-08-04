@@ -4,16 +4,20 @@ import { DashboardService } from './dashboard.service';
 import { UserRepository } from '@modules/auth/user.repository';
 import { KycService } from '@modules/kyc/kyc.service';
 import { KycRepository } from '@modules/kyc/kyc.repository';
+import { KycVerificationService } from '@modules/kyc/kyc-verification.service';
+import { KycVerificationOtpRepository } from '@modules/kyc/kyc-verification-otp.repository';
+import { KycVerifiedDocumentRepository } from '@modules/kyc/kyc-verified-document.repository';
+import { MockKycVerificationProvider } from '@shared/services/kyc-verification.service';
 import { CriminalRecordService } from '@modules/criminal-record/criminal-record.service';
 import { CriminalRecordRepository } from '@modules/criminal-record/criminal-record.repository';
-import { SubscriptionsService } from '@modules/subscriptions/subscriptions.service';
-import { SubscriptionsRepository } from '@modules/subscriptions/subscriptions.repository';
+import { OnboardingFeeService } from '@modules/onboarding-fee/onboarding-fee.service';
+import { OnboardingFeeRepository } from '@modules/onboarding-fee/onboarding-fee.repository';
 import { RazorpayGateway } from '@shared/services/payment-gateway.service';
 import { requireAuth } from '@middleware/require-auth';
 
 /**
  * Dashboard feature module: a thin read-only composition over auth/kyc/
- * criminal-record/subscriptions. Each dependency chain is reconstructed here
+ * criminal-record/onboarding-fee. Each dependency chain is reconstructed here
  * rather than reused from those modules' own `create<X>Module()` factories —
  * those only return `Router`s, not the underlying service, and there's no
  * shared service registry in this codebase. The duplication is a few lines
@@ -22,17 +26,25 @@ import { requireAuth } from '@middleware/require-auth';
  */
 export const createDashboardModule = (): Router => {
   const users = new UserRepository();
-  const kycService = new KycService(new KycRepository());
+  // Dashboard only reads KYC status (getStatus) — never verifies/submits —
+  // but KycService's constructor needs a KycVerificationService regardless.
+  const kycVerificationService = new KycVerificationService(
+    new MockKycVerificationProvider(),
+    new KycVerificationOtpRepository(),
+    new KycVerifiedDocumentRepository()
+  );
+  const kycService = new KycService(new KycRepository(), kycVerificationService);
   const criminalRecordService = new CriminalRecordService(new CriminalRecordRepository());
-  const subscriptionsService = new SubscriptionsService(
-    new SubscriptionsRepository(),
+  const onboardingFeeService = new OnboardingFeeService(
+    new OnboardingFeeRepository(),
+    users,
     new RazorpayGateway()
   );
   const dashboardService = new DashboardService(
     users,
     kycService,
     criminalRecordService,
-    subscriptionsService
+    onboardingFeeService
   );
   const controller = new DashboardController(dashboardService);
 
@@ -46,7 +58,7 @@ export const createDashboardModule = (): Router => {
    *     summary: Get the authenticated user's dashboard summary
    *     description: >
    *       Composes profile essentials, KYC status, criminal-record status,
-   *       and subscription status into one response — everything a
+   *       and onboarding-fee payment status into one response — everything a
    *       dashboard screen needs from a single request.
    *     security:
    *       - bearerAuth: []

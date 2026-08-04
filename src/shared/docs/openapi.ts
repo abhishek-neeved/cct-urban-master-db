@@ -35,7 +35,7 @@ const options: swaggerJSDoc.Options = {
         name: 'Criminal Record',
         description: 'Criminal-record check status — read-only for users, admin-settable',
       },
-      { name: 'Subscriptions', description: 'Razorpay-backed recurring subscription billing' },
+      { name: 'OnboardingFee', description: 'Razorpay-backed one-time onboarding-fee payment' },
       { name: 'Dashboard', description: 'Composed read-only summary for the dashboard screen' },
       { name: 'Health', description: 'Combined liveness + readiness probe' },
     ],
@@ -63,7 +63,8 @@ const options: swaggerJSDoc.Options = {
               type: 'string',
               nullable: true,
               enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other', null],
-              description: 'Only set for service_provider, and only after the one-time onboarding step.',
+              description:
+                'Only set for service_provider, and only after the one-time onboarding step.',
             },
             phoneNumber: {
               type: 'string',
@@ -134,17 +135,13 @@ const options: swaggerJSDoc.Options = {
         },
         KycRecord: {
           type: 'object',
-          description: '`not_started` has no submitted fields — every field below is absent until first submission.',
+          description:
+            '`not_started` has no submitted fields — every field below is absent until first submission.',
           properties: {
             status: { type: 'string', enum: ['not_started', 'pending', 'verified', 'rejected'] },
             aadharNumber: { type: 'string', example: '123456789012' },
-            aadharImageKey: { type: 'string' },
             panNumber: { type: 'string', example: 'ABCDE1234F' },
-            panImageKey: { type: 'string' },
-            dateOfBirth: { type: 'string', format: 'date-time' },
             address: { type: 'string' },
-            photographKey: { type: 'string' },
-            uan: { type: 'string', example: '12345678901234' },
             submittedAt: { type: 'string', format: 'date-time' },
             rejectionReason: { type: 'string' },
           },
@@ -167,22 +164,56 @@ const options: swaggerJSDoc.Options = {
         },
         SubmitKycRequest: {
           type: 'object',
+          description:
+            'aadharNumber/panNumber must already be verified via /api/kyc/verify-aadhar/* and /api/kyc/verify-pan/*.',
           properties: {
             aadharNumber: { type: 'string', pattern: '^\\d{12}$', example: '123456789012' },
-            aadharImageKey: { type: 'string', description: 'Key returned by POST /api/uploads/presign' },
             panNumber: { type: 'string', pattern: '^[A-Z]{5}\\d{4}[A-Z]$', example: 'ABCDE1234F' },
-            panImageKey: { type: 'string', description: 'Key returned by POST /api/uploads/presign' },
-            dateOfBirth: { type: 'string', format: 'date-time' },
             address: { type: 'string', minLength: 1 },
-            photographKey: { type: 'string', description: 'Key returned by POST /api/uploads/presign' },
-            uan: { type: 'string', pattern: '^\\d{14}$', example: '12345678901234' },
           },
-          required: ['aadharNumber', 'aadharImageKey', 'panNumber', 'panImageKey', 'address', 'photographKey'],
+          required: ['aadharNumber', 'panNumber', 'address'],
+        },
+        RequestAadharVerificationRequest: {
+          type: 'object',
+          properties: {
+            aadharNumber: { type: 'string', pattern: '^\\d{12}$', example: '123456789012' },
+          },
+          required: ['aadharNumber'],
+        },
+        RequestPanVerificationRequest: {
+          type: 'object',
+          properties: {
+            panNumber: { type: 'string', pattern: '^[A-Z]{5}\\d{4}[A-Z]$', example: 'ABCDE1234F' },
+          },
+          required: ['panNumber'],
+        },
+        ConfirmVerificationOtpRequest: {
+          type: 'object',
+          properties: {
+            otp: { type: 'string', pattern: '^\\d{6}$', example: '042317' },
+          },
+          required: ['otp'],
+        },
+        VerificationRequestResult: {
+          type: 'object',
+          properties: {
+            maskedMobileNumber: { type: 'string', example: '9XXXXX4321' },
+            devOtp: {
+              type: 'string',
+              pattern: '^\\d{6}$',
+              description: 'Only present outside production — a local-testing convenience.',
+            },
+          },
+          required: ['maskedMobileNumber'],
         },
         RejectKycRequest: {
           type: 'object',
           properties: {
-            reason: { type: 'string', minLength: 1, example: 'Aadhar photo is blurry and unreadable' },
+            reason: {
+              type: 'string',
+              minLength: 1,
+              example: 'Aadhar photo is blurry and unreadable',
+            },
           },
           required: ['reason'],
         },
@@ -201,38 +232,39 @@ const options: swaggerJSDoc.Options = {
           },
           required: ['status'],
         },
-        SubscriptionPlan: {
+        OnboardingFee: {
           type: 'object',
           properties: {
-            id: { type: 'string', example: 'monthly' },
-            name: { type: 'string', example: 'Monthly plan' },
-            priceInRupees: { type: 'number', example: 10 },
-            intervalLabel: { type: 'string', example: 'month' },
+            status: { type: 'string', enum: ['unpaid', 'paid'] },
+            amountInRupees: { type: 'number', example: 10 },
+            paidAt: { type: 'string', format: 'date-time' },
           },
-          required: ['id', 'name', 'priceInRupees', 'intervalLabel'],
+          required: ['status', 'amountInRupees'],
         },
-        Subscription: {
+        OnboardingFeeCheckoutRequest: {
           type: 'object',
           properties: {
-            status: { type: 'string', enum: ['inactive', 'active', 'past_due', 'cancelled'] },
-            plan: { $ref: '#/components/schemas/SubscriptionPlan' },
-            startedAt: { type: 'string', format: 'date-time' },
-            renewsAt: { type: 'string', format: 'date-time' },
+            redirectUrl: {
+              type: 'string',
+              format: 'uri',
+              description:
+                'Where the client wants to land after paying — the callback route redirects here once confirmed.',
+              example: 'https://app.example.com/onboarding-fee',
+            },
           },
-          required: ['status', 'plan'],
+          required: ['redirectUrl'],
         },
-        CheckoutResult: {
+        OnboardingFeeCheckoutResult: {
           type: 'object',
           properties: {
-            razorpaySubscriptionId: { type: 'string', example: 'sub_00000000000001' },
             shortUrl: { type: 'string', example: 'https://rzp.io/i/PWtAiEo' },
           },
-          required: ['razorpaySubscriptionId', 'shortUrl'],
+          required: ['shortUrl'],
         },
         DashboardSummary: {
           type: 'object',
           description:
-            'kyc/criminalRecord/subscription are only present for a service_provider — a customer only books services and never goes through that onboarding.',
+            'kyc/criminalRecord/onboardingFee are only present for a service_provider — a customer only books services and never goes through that onboarding.',
           properties: {
             user: {
               type: 'object',
@@ -246,7 +278,7 @@ const options: swaggerJSDoc.Options = {
             },
             kyc: { $ref: '#/components/schemas/KycRecord' },
             criminalRecord: { $ref: '#/components/schemas/CriminalRecordCheck' },
-            subscription: { $ref: '#/components/schemas/Subscription' },
+            onboardingFee: { $ref: '#/components/schemas/OnboardingFee' },
           },
           required: ['user'],
         },
@@ -269,18 +301,15 @@ const options: swaggerJSDoc.Options = {
         },
         RegisterRequest: {
           type: 'object',
+          description:
+            'Every self-registered account becomes a service_provider — there is no account-type choice at signup.',
           properties: {
             firstName: { type: 'string', minLength: 1, maxLength: 120 },
             lastName: { type: 'string', minLength: 1, maxLength: 120 },
             email: { type: 'string', format: 'email' },
             password: { type: 'string', minLength: 8, maxLength: 128 },
-            role: {
-              type: 'string',
-              enum: ['service_provider', 'customer'],
-              description: 'The signup account-type choice — "provide a service" vs. "book a service". `admin` is never self-registered.',
-            },
           },
-          required: ['firstName', 'lastName', 'email', 'password', 'role'],
+          required: ['firstName', 'lastName', 'email', 'password'],
         },
         SetServiceCategoryRequest: {
           type: 'object',
@@ -291,6 +320,30 @@ const options: swaggerJSDoc.Options = {
             },
           },
           required: ['serviceCategory'],
+        },
+        ServiceProfile: {
+          type: 'object',
+          properties: {
+            category: {
+              type: 'string',
+              enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],
+            },
+            description: { type: 'string', nullable: true, maxLength: 1000 },
+            yearsOfExperience: { type: 'integer', nullable: true, minimum: 0, maximum: 80 },
+          },
+          required: ['category', 'description', 'yearsOfExperience'],
+        },
+        UpsertServiceProfileRequest: {
+          type: 'object',
+          properties: {
+            category: {
+              type: 'string',
+              enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],
+            },
+            description: { type: 'string', maxLength: 1000 },
+            yearsOfExperience: { type: 'integer', minimum: 0, maximum: 80 },
+          },
+          required: ['category'],
         },
         LoginRequest: {
           type: 'object',
@@ -336,7 +389,8 @@ const options: swaggerJSDoc.Options = {
         },
         ResetPasswordRequest: {
           type: 'object',
-          description: 'One-shot — the OTP is both the proof of mailbox ownership and the authorization to set the new password.',
+          description:
+            'One-shot — the OTP is both the proof of mailbox ownership and the authorization to set the new password.',
           properties: {
             email: { type: 'string', format: 'email', example: 'jane.doe@example.com' },
             otp: { type: 'string', pattern: '^\\d{6}$', example: '042317' },

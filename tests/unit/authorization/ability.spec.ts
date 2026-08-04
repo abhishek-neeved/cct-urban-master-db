@@ -6,16 +6,16 @@ describe('defineAbilitiesFor', () => {
 
     expect(ability.can('manage', 'all')).toBe(true);
     expect(ability.can('read', 'Kyc')).toBe(true);
-    expect(ability.can('update', 'Subscription')).toBe(true);
+    expect(ability.can('update', 'OnboardingFee')).toBe(true);
   });
 
-  it('lets service_provider read/create/update Kyc, CriminalRecord, and Subscription, but not manage all', () => {
+  it('lets service_provider read/create/update Kyc, CriminalRecord, and OnboardingFee, but not manage all', () => {
     const ability = defineAbilitiesFor('service_provider');
 
     expect(ability.can('read', 'Kyc')).toBe(true);
     expect(ability.can('create', 'Kyc')).toBe(true);
     expect(ability.can('update', 'CriminalRecord')).toBe(true);
-    expect(ability.can('read', 'Subscription')).toBe(true);
+    expect(ability.can('read', 'OnboardingFee')).toBe(true);
     expect(ability.can('manage', 'all')).toBe(false);
     expect(ability.can('read', 'ServiceProviderDirectory')).toBe(false);
   });
@@ -25,7 +25,7 @@ describe('defineAbilitiesFor', () => {
 
     expect(ability.can('read', 'Kyc')).toBe(false);
     expect(ability.can('read', 'CriminalRecord')).toBe(false);
-    expect(ability.can('read', 'Subscription')).toBe(false);
+    expect(ability.can('read', 'OnboardingFee')).toBe(false);
     expect(ability.can('manage', 'all')).toBe(false);
     expect(ability.can('read', 'ServiceProviderDirectory')).toBe(true);
   });

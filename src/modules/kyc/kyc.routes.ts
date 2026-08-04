@@ -2,6 +2,10 @@ import { Router } from 'express';
 import { KycController } from './kyc.controller';
 import { KycService } from './kyc.service';
 import { KycRepository } from './kyc.repository';
+import { KycVerificationService } from './kyc-verification.service';
+import { KycVerificationOtpRepository } from './kyc-verification-otp.repository';
+import { KycVerifiedDocumentRepository } from './kyc-verified-document.repository';
+import { MockKycVerificationProvider } from '@shared/services/kyc-verification.service';
 import { UserRepository } from '@modules/auth/user.repository';
 import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
@@ -9,8 +13,12 @@ import { requireAbility } from '@middleware/require-ability';
 import {
   listForReviewQuerySchema,
   rejectKycSchema,
+  requestAadharVerificationSchema,
+  requestPanVerificationSchema,
   submitKycSchema,
   userIdParamSchema,
+  verifyAadharOtpSchema,
+  verifyPanOtpSchema,
 } from './kyc.validator';
 
 /**
@@ -24,8 +32,16 @@ import {
 export const createKycModule = (): { userRouter: Router; adminRouter: Router } => {
   const kyc = new KycRepository();
   const users = new UserRepository();
-  const kycService = new KycService(kyc);
-  const controller = new KycController(kycService);
+  const verificationProvider = new MockKycVerificationProvider();
+  const verificationOtps = new KycVerificationOtpRepository();
+  const verifiedDocuments = new KycVerifiedDocumentRepository();
+  const verificationService = new KycVerificationService(
+    verificationProvider,
+    verificationOtps,
+    verifiedDocuments
+  );
+  const kycService = new KycService(kyc, verificationService);
+  const controller = new KycController(kycService, verificationService);
   const requireProvider = requireAbility(users, 'read', 'Kyc');
   const requireAdmin = requireAbility(users, 'manage', 'all');
 
@@ -47,20 +63,147 @@ export const createKycModule = (): { userRouter: Router; adminRouter: Router } =
    *           application/json:
    *             schema: { $ref: '#/components/schemas/KycRecord' }
    *       401: { description: Missing/invalid access token }
-   *       403: { description: Caller is not a service provider }
    */
   userRouter.get('/me', requireAuth, requireProvider, controller.me);
+
+  /**
+   * @openapi
+   * /api/kyc/verify-aadhar/request:
+   *   post:
+   *     tags: [KYC]
+   *     summary: Request an OTP to verify an Aadhaar number
+   *     description: >
+   *       Fetches the (masked) mobile number linked to the Aadhaar and sends
+   *       it an OTP — see `verify-aadhar/confirm`. Re-requesting for a
+   *       different Aadhaar number replaces any pending OTP.
+   *     security:
+   *       - bearerAuth: []
+   *       - cookieAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/RequestAadharVerificationRequest' }
+   *     responses:
+   *       200:
+   *         description: OK
+   *         content:
+   *           application/json:
+   *             schema: { $ref: '#/components/schemas/VerificationRequestResult' }
+   *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
+   *       422: { description: Validation failed }
+   */
+  userRouter.post(
+    '/verify-aadhar/request',
+    requireAuth,
+    requireProvider,
+    validate({ body: requestAadharVerificationSchema }),
+    controller.requestAadharVerification
+  );
+
+  /**
+   * @openapi
+   * /api/kyc/verify-aadhar/confirm:
+   *   post:
+   *     tags: [KYC]
+   *     summary: Confirm the OTP sent for Aadhaar verification
+   *     security:
+   *       - bearerAuth: []
+   *       - cookieAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/ConfirmVerificationOtpRequest' }
+   *     responses:
+   *       200: { description: Aadhaar verified }
+   *       400: { description: Invalid or expired verification code }
+   *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
+   *       422: { description: Validation failed }
+   */
+  userRouter.post(
+    '/verify-aadhar/confirm',
+    requireAuth,
+    requireProvider,
+    validate({ body: verifyAadharOtpSchema }),
+    controller.verifyAadharOtp
+  );
+
+  /**
+   * @openapi
+   * /api/kyc/verify-pan/request:
+   *   post:
+   *     tags: [KYC]
+   *     summary: Request an OTP to verify a PAN
+   *     security:
+   *       - bearerAuth: []
+   *       - cookieAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/RequestPanVerificationRequest' }
+   *     responses:
+   *       200:
+   *         description: OK
+   *         content:
+   *           application/json:
+   *             schema: { $ref: '#/components/schemas/VerificationRequestResult' }
+   *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
+   *       422: { description: Validation failed }
+   */
+  userRouter.post(
+    '/verify-pan/request',
+    requireAuth,
+    requireProvider,
+    validate({ body: requestPanVerificationSchema }),
+    controller.requestPanVerification
+  );
+
+  /**
+   * @openapi
+   * /api/kyc/verify-pan/confirm:
+   *   post:
+   *     tags: [KYC]
+   *     summary: Confirm the OTP sent for PAN verification
+   *     security:
+   *       - bearerAuth: []
+   *       - cookieAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/ConfirmVerificationOtpRequest' }
+   *     responses:
+   *       200: { description: PAN verified }
+   *       400: { description: Invalid or expired verification code }
+   *       401: { description: Missing/invalid access token }
+   *       403: { description: Caller is not a service provider }
+   *       422: { description: Validation failed }
+   */
+  userRouter.post(
+    '/verify-pan/confirm',
+    requireAuth,
+    requireProvider,
+    validate({ body: verifyPanOtpSchema }),
+    controller.verifyPanOtp
+  );
 
   /**
    * @openapi
    * /api/kyc/submit:
    *   post:
    *     tags: [KYC]
-   *     summary: Submit (or resubmit, after a rejection) identity documents for review
+   *     summary: Submit (or resubmit, after a rejection) identity details for review
    *     description: >
-   *       Rejects with 400 if the caller is already verified or already has a
-   *       submission pending review. A resubmission after rejection clears the
-   *       previous rejection reason and re-enters the queue as `pending`.
+   *       Rejects with 400 if the caller is already verified, already has a
+   *       submission pending review, or hasn't verified the Aadhaar/PAN
+   *       number being submitted (see `/verify-aadhar/*`, `/verify-pan/*`).
+   *       A resubmission after rejection clears the previous rejection
+   *       reason and re-enters the queue as `pending`.
    *     security:
    *       - bearerAuth: []
    *       - cookieAuth: []
@@ -75,7 +218,7 @@ export const createKycModule = (): { userRouter: Router; adminRouter: Router } =
    *         content:
    *           application/json:
    *             schema: { $ref: '#/components/schemas/KycRecord' }
-   *       400: { description: Already verified, or already pending review }
+   *       400: { description: Already verified, already pending, or Aadhaar/PAN not yet verified }
    *       401: { description: Missing/invalid access token }
    *       403: { description: Caller is not a service provider }
    *       422: { description: Validation failed }

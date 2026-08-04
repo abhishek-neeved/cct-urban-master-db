@@ -1,6 +1,5 @@
 import { env, isProduction } from '@config/env';
 import { LOGIN_MAX_ATTEMPTS, OTP_MAX_ATTEMPTS } from '@config/constants';
-import type { UserRole } from './auth.model';
 import { User } from './user.types';
 import { IUserRepository } from './user.repository';
 import { IRefreshTokenRepository } from './refresh-token.repository';
@@ -32,8 +31,6 @@ export interface RegisterInput {
   lastName: string;
   email: string;
   password: string;
-  /** The signup account-type choice — "provide a service" vs. "book a service". */
-  role: Exclude<UserRole, 'admin'>;
 }
 
 export interface RegisterResult {
@@ -69,6 +66,10 @@ export class AuthService {
    * Creates the account but does not log the caller in — no tokens are issued
    * here. The account starts unverified (`isVerified: false`); a verification
    * OTP is emailed, and the caller must verify (and then log in) separately.
+   * Every self-registered account is a `service_provider` — there is no
+   * signup-time account-type choice anymore; a `customer` account is never
+   * created through this endpoint, and `admin` is promoted directly in the
+   * database.
    */
   async register(input: RegisterInput): Promise<RegisterResult> {
     const existing = await this.users.findByEmail(input.email);
@@ -81,7 +82,7 @@ export class AuthService {
       lastName: input.lastName,
       email: input.email,
       password: passwordHash,
-      role: input.role,
+      role: 'service_provider',
     });
     const rawOtp = await this.issueOtp(user.id, 'REGISTER');
     await this.email.sendOtpEmail(user.email, rawOtp);
@@ -308,7 +309,11 @@ export class AuthService {
    * trusts a mailed OTP instead, for a caller who can't log in at all).
    * Forces re-login everywhere afterwards, same as a reset.
    */
-  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
     const record = await this.users.findByIdWithPassword(userId);
     if (!record) {
       throw new UnauthorizedError('User no longer exists');

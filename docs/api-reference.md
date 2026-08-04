@@ -570,29 +570,32 @@ curl -X PATCH http://localhost:3000/api/admin/kyc/<userId>/reject \
 
 ---
 
-## Subscriptions
+## Onboarding Fee
 
-Recurring ₹10/month billing via Razorpay. Status is derived from Razorpay's
-own subscription lifecycle and collapses to 4 client-facing states:
+A one-time ₹10 payment via a Razorpay Payment Link — no plan, no recurring
+charge, no cancellation. Once paid, it's permanent: there is no repayment or
+expiry for an account that has already paid. Status collapses to 2
+client-facing states:
 
-| Client status | Razorpay states it covers |
+| Client status | Razorpay payment-link states it covers |
 | -------------- | -------------------------- |
-| `inactive`     | no subscription yet, or checkout started but not yet authorized (`created`, `authenticated`, `pending`) |
-| `active`       | `active`, `completed`      |
-| `past_due`     | `halted` (a charge failed) |
-| `cancelled`    | `cancelled`, `expired`     |
+| `unpaid`       | no checkout yet, or one in progress/lapsed (`created`, `partially_paid`, `cancelled`, `expired`) |
+| `paid`         | `paid` — permanent, never reverts |
 
-> **Status only ever changes via the webhook.** `POST /api/subscriptions/checkout`
-> creates the Razorpay subscription and returns a URL for the client to open
-> (Razorpay Checkout) to collect the authorization payment — it does **not**
-> mark the subscription active. Only `POST /api/subscriptions/webhook`,
-> verified against Razorpay's own signature, is trusted to change status. A
-> client claiming "payment succeeded" is not proof of payment; Razorpay's
-> signed notification is.
+> **Status changes via two independent, equally-trusted paths.** `POST
+> /api/onboarding-fee/checkout` creates the Razorpay payment link and returns
+> a URL for the client to open (new tab on web, in-app browser on mobile) to
+> pay — it does **not** mark the fee paid. Only `GET
+> /api/onboarding-fee/callback` (the redirect Razorpay sends the browser to
+> after payment, verified via a signature over its query params) and `POST
+> /api/onboarding-fee/webhook` (verified against Razorpay's own webhook
+> signature) are trusted to mark it paid. A client claiming "payment
+> succeeded" is not proof of payment; a Razorpay-signed confirmation is.
+> Whichever of the two arrives first wins; the other is then a no-op.
 
-### `GET /api/subscriptions/me`
+### `GET /api/onboarding-fee/me`
 
-Return the authenticated user's subscription status and plan. **Protected.**
+Return the authenticated user's onboarding-fee payment status. **Protected.**
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
@@ -600,68 +603,72 @@ Return the authenticated user's subscription status and plan. **Protected.**
 ```json
 {
   "success": true,
-  "data": {
-    "status": "active",
-    "plan": { "id": "monthly", "name": "Monthly plan", "priceInRupees": 10, "intervalLabel": "month" },
-    "startedAt": "…",
-    "renewsAt": "…"
-  },
+  "data": { "status": "paid", "amountInRupees": 10, "paidAt": "…" },
   "requestId": "…"
 }
 ```
 
 **Errors:** `401` missing/invalid access token
 
-### `POST /api/subscriptions/checkout`
+### `POST /api/onboarding-fee/checkout`
 
-Start a new subscription. Creates a Razorpay subscription and returns its id
-and a short URL (Razorpay Checkout) for the client to open and complete the
-authorization payment.
-
-**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
-
-**200** → `{ "success": true, "data": { "razorpaySubscriptionId": "sub_…", "shortUrl": "https://rzp.io/i/…" }, "requestId": "…" }`
-
-**Errors:** `401` missing/invalid access token · `409` already has an active subscription
-
-### `POST /api/subscriptions/cancel`
-
-Cancel the authenticated user's active subscription immediately (not at the
-end of the current billing cycle) via the Razorpay API.
+Start a one-time onboarding-fee payment. Creates a Razorpay payment link and
+returns its short URL for the client to open and complete payment.
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
-**200** → `{ "success": true, "data": { "message": "Subscription cancelled" }, "requestId": "…" }`
+**Body:** `redirectUrl` (required) — where the client wants to land after
+paying; the callback route redirects here once confirmed.
 
-**Errors:** `400` no active subscription to cancel · `401` missing/invalid access token
+**200** → `{ "success": true, "data": { "shortUrl": "https://rzp.io/i/…" }, "requestId": "…" }`
 
-### `POST /api/subscriptions/webhook`
+**Errors:** `401` missing/invalid access token · `409` already paid
 
-Razorpay's webhook for subscription lifecycle events (`subscription.activated`,
-`.charged`, `.halted`, `.cancelled`, etc.) — the only endpoint allowed to
-change subscription status. **Not** gated by a user session; its trust
-boundary is the signature check below.
+### `GET /api/onboarding-fee/callback`
+
+Razorpay redirects the user's browser here after payment, with a signed set
+of query params appended to the `callback_url` set at checkout. **Not**
+gated by a user session; its trust boundary is the signature check below. On
+success, redirects on to the `redirectUrl` supplied at checkout.
+
+> **Signature verification.** Razorpay signs `payment_link_id|payment_link_reference_id|payment_link_status|razorpay_payment_id`
+> with HMAC-SHA256 using the API key secret (`RAZORPAY_KEY_SECRET`) — a
+> different scheme than the webhook's. A missing or invalid signature is
+> rejected with **401**.
+
+**Query params:** `razorpay_payment_id`, `razorpay_payment_link_id`, `razorpay_payment_link_reference_id`, `razorpay_payment_link_status`, `razorpay_signature`, `redirectUrl`
+
+**302** → redirects to `redirectUrl`
+
+**Errors:** `400` payment not completed, or no matching checkout found · `401` invalid callback signature
+
+### `POST /api/onboarding-fee/webhook`
+
+Razorpay's webhook for payment-link lifecycle events — a durable backup
+confirmation path alongside the callback redirect (in case the browser
+never completes the redirect, e.g. the app was killed mid-payment). **Not**
+gated by a user session; its trust boundary is the signature check below.
 
 > **Signature verification.** Razorpay signs the raw request body with
 > HMAC-SHA256 using the webhook secret configured on both sides
 > (`RAZORPAY_WEBHOOK_SECRET`), sent as the `X-Razorpay-Signature` header. A
 > missing or invalid signature is rejected with **401** before the body is
-> ever read as an event. A validly signed event for a subscription this app
+> ever read as an event. A validly signed event for a payment link this app
 > doesn't recognise (e.g. a webhook misconfigured for a different account) is
 > logged and ignored — still **200**, so Razorpay doesn't endlessly retry.
 
 **Headers:** `X-Razorpay-Signature: <hex hmac>`
 
-**Body:** the raw Razorpay webhook payload (unvalidated beyond signature — this app reads only `event` and `payload.subscription.entity`)
+**Body:** the raw Razorpay webhook payload (unvalidated beyond signature — this app reads only `event` and `payload.payment_link.entity`)
 
 **200** → `{ "success": true, "data": { "received": true }, "requestId": "…" }` (event applied or ignored)
 
 **Errors:** `401` invalid or missing signature
 
 ```bash
-BODY='{"event":"subscription.activated","payload":{"subscription":{"entity":{"id":"sub_abc","status":"active","current_start":1700000000,"current_end":1702592000}}}}'
+BODY='{"event":"payment_link.paid","payload":{"payment_link":{"entity":{"id":"plink_abc","status":"paid"}}}}'
 SIGNATURE=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$RAZORPAY_WEBHOOK_SECRET" | sed 's/^.* //')
-curl -X POST http://localhost:3000/api/subscriptions/webhook \
+curl -X POST http://localhost:3000/api/onboarding-fee/webhook \
   -H "Content-Type: application/json" \
   -H "X-Razorpay-Signature: $SIGNATURE" \
   -d "$BODY"
@@ -715,11 +722,12 @@ curl -X PATCH http://localhost:3000/api/admin/criminal-record/<userId> \
 ### `GET /api/dashboard/me`
 
 Composes profile essentials, KYC status, criminal-record status, and
-subscription status into one response — everything a dashboard screen needs
-from a single request instead of the several separate ones each module's own
-`/me` endpoint would otherwise require. Purely read-only: no new persisted
-state, and every field is owned and validated by its source module (see the
-Users/KYC/Criminal Record/Subscriptions sections above for what each means).
+onboarding-fee payment status into one response — everything a dashboard
+screen needs from a single request instead of the several separate ones each
+module's own `/me` endpoint would otherwise require. Purely read-only: no new
+persisted state, and every field is owned and validated by its source module
+(see the Users/KYC/Criminal Record/Onboarding Fee sections above for what
+each means).
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
@@ -731,10 +739,7 @@ Users/KYC/Criminal Record/Subscriptions sections above for what each means).
     "user": { "firstName": "Ada", "lastName": "Lovelace", "email": "ada@example.com" },
     "kyc": { "status": "not_started" },
     "criminalRecord": { "status": "pending" },
-    "subscription": {
-      "status": "inactive",
-      "plan": { "id": "monthly", "name": "Monthly plan", "priceInRupees": 10, "intervalLabel": "month" }
-    }
+    "onboardingFee": { "status": "unpaid", "amountInRupees": 10 }
   },
   "requestId": "…"
 }

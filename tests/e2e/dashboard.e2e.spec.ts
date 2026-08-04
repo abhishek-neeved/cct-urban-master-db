@@ -4,6 +4,12 @@ import { createApp } from '@/app';
 import { UserModel } from '@modules/auth/auth.model';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
+const validSubmission = {
+  aadharNumber: '123456789012',
+  panNumber: 'ABCDE1234F',
+  address: '221B Baker Street',
+};
+
 describe('Dashboard API (e2e)', () => {
   let app: Application;
 
@@ -14,13 +20,12 @@ describe('Dashboard API (e2e)', () => {
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  const registerAndLogin = async (
-    email: string,
-    role: 'service_provider' | 'customer' = 'service_provider'
-  ): Promise<string> => {
+  // Every self-registered account is a service_provider — there is no
+  // account-type choice at signup anymore.
+  const registerAndLogin = async (email: string): Promise<string> => {
     const registerRes = await request(app)
       .post('/api/auth/register')
-      .send({ firstName: 'Ada', lastName: 'Lovelace', email, password: 'supersecret', role });
+      .send({ firstName: 'Ada', lastName: 'Lovelace', email, password: 'supersecret' });
     const otp = registerRes.body.data.otpDevCode as string;
     await request(app).post('/api/auth/verify-otp').send({ email, otp }).expect(200);
     const loginRes = await request(app)
@@ -29,7 +34,27 @@ describe('Dashboard API (e2e)', () => {
     return loginRes.body.data.accessToken as string;
   };
 
-  it('composes profile, default KYC/criminal-record/subscription statuses for a brand-new service provider', async () => {
+  const verifyDocuments = async (accessToken: string): Promise<void> => {
+    const aadharReq = await request(app)
+      .post('/api/kyc/verify-aadhar/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ aadharNumber: validSubmission.aadharNumber });
+    await request(app)
+      .post('/api/kyc/verify-aadhar/confirm')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ otp: aadharReq.body.data.devOtp });
+
+    const panReq = await request(app)
+      .post('/api/kyc/verify-pan/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ panNumber: validSubmission.panNumber });
+    await request(app)
+      .post('/api/kyc/verify-pan/confirm')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ otp: panReq.body.data.devOtp });
+  };
+
+  it('composes profile, default KYC/criminal-record/onboarding-fee statuses for a brand-new service provider', async () => {
     const accessToken = await registerAndLogin('dash1@example.com');
 
     const res = await request(app)
@@ -38,18 +63,21 @@ describe('Dashboard API (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
-      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'dash1@example.com', role: 'service_provider' },
+      user: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'dash1@example.com',
+        role: 'service_provider',
+      },
       kyc: { status: 'not_started' },
       criminalRecord: { status: 'pending' },
-      subscription: {
-        status: 'inactive',
-        plan: { id: 'monthly', name: 'Monthly plan', priceInRupees: 10, intervalLabel: 'month' },
-      },
+      onboardingFee: { status: 'unpaid', amountInRupees: 10 },
     });
   });
 
-  it('omits KYC/criminal-record/subscription for a customer', async () => {
-    const accessToken = await registerAndLogin('dash-customer@example.com', 'customer');
+  it('omits KYC/criminal-record/onboarding-fee for a customer', async () => {
+    const accessToken = await registerAndLogin('dash-customer@example.com');
+    await UserModel.updateOne({ email: 'dash-customer@example.com' }, { role: 'customer' });
 
     const res = await request(app)
       .get('/api/dashboard/me')
@@ -57,23 +85,22 @@ describe('Dashboard API (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
-      user: { firstName: 'Ada', lastName: 'Lovelace', email: 'dash-customer@example.com', role: 'customer' },
+      user: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'dash-customer@example.com',
+        role: 'customer',
+      },
     });
   });
 
   it('reflects real KYC and criminal-record state after admin review', async () => {
     const accessToken = await registerAndLogin('dash2@example.com');
+    await verifyDocuments(accessToken);
     await request(app)
       .post('/api/kyc/submit')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        aadharNumber: '123456789012',
-        aadharImageKey: 'kyc-aadhar/u/a',
-        panNumber: 'ABCDE1234F',
-        panImageKey: 'kyc-pan/u/b',
-        address: '221B Baker Street',
-        photographKey: 'kyc-photo/u/c',
-      });
+      .send(validSubmission);
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
     const userId = me.body.data.user.id;
     await UserModel.updateOne({ email: 'dash2@example.com' }, { role: 'admin' });

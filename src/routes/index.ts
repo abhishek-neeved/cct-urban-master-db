@@ -5,9 +5,10 @@ import { createUsersModule } from '@modules/users/users.routes';
 import { createUploadsModule } from '@modules/uploads/uploads.routes';
 import { createKycModule } from '@modules/kyc/kyc.routes';
 import { createCriminalRecordModule } from '@modules/criminal-record/criminal-record.routes';
-import { createSubscriptionsModule } from '@modules/subscriptions/subscriptions.routes';
+import { createOnboardingFeeModule } from '@modules/onboarding-fee/onboarding-fee.routes';
 import { createDashboardModule } from '@modules/dashboard/dashboard.routes';
 import { createServiceProvidersModule } from '@modules/service-providers/service-providers.routes';
+import { createServiceProfileModule } from '@modules/service-profile/service-profile.routes';
 import { createDocsModule } from '@modules/docs/docs.routes';
 
 /**
@@ -45,11 +46,13 @@ export const createApiRouter = (): Router => {
   router.use('/criminal-record', criminalRecordRouter);
   router.use('/admin/criminal-record', adminCriminalRecordRouter);
 
-  router.use('/subscriptions', createSubscriptionsModule());
+  router.use('/onboarding-fee', createOnboardingFeeModule());
 
   router.use('/dashboard', createDashboardModule());
 
   router.use('/service-providers', createServiceProvidersModule());
+
+  router.use('/service-profile', createServiceProfileModule());
 
   return router;
 };

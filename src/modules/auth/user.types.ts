@@ -19,7 +19,7 @@ export interface User {
 /** Domain user plus the password hash, for internal auth checks only. */
 export type UserWithPassword = User & { password: string };
 
-/** Input to persist a new user (password is already hashed by the service). Role is set directly from the signup account-type choice — `admin` is never self-registered. */
+/** Input to persist a new user (password is already hashed by the service). `role` stays required here since admin-promotion and future customer-creation paths still need to set it explicitly — only self-registration (`auth.service.ts#register`) hardcodes `service_provider`. */
 export interface CreateUserInput {
   firstName: string;
   lastName: string;

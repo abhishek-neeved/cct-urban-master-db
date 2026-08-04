@@ -5,11 +5,8 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 
 const buildSubmission = (): SubmitKycInput => ({
   aadharNumber: '123456789012',
-  aadharImageKey: 'kyc-aadhar/u1/a',
   panNumber: 'ABCDE1234F',
-  panImageKey: 'kyc-pan/u1/b',
   address: '221B Baker Street',
-  photographKey: 'kyc-photo/u1/c',
 });
 
 describe('KycRepository (integration)', () => {

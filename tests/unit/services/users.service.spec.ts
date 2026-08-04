@@ -2,7 +2,7 @@ import { vi, type Mocked } from 'vitest';
 import { UsersService } from '@modules/users/users.service';
 import type { IUserRepository } from '@modules/auth/user.repository';
 import type { User } from '@modules/auth/user.types';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@utils/errors';
+import { ForbiddenError, NotFoundError } from '@utils/errors';
 
 const buildUser = (overrides: Partial<User> = {}): User => ({
   id: '00000000-0000-4000-8000-000000000000',
@@ -77,7 +77,9 @@ describe('UsersService', () => {
 
       const result = await service.updateProfile(updated.id, { phoneNumber: '+919876543210' });
 
-      expect(users.updateProfile).toHaveBeenCalledWith(updated.id, { phoneNumber: '+919876543210' });
+      expect(users.updateProfile).toHaveBeenCalledWith(updated.id, {
+        phoneNumber: '+919876543210',
+      });
       expect(result).toEqual(updated);
     });
   });
@@ -113,16 +115,22 @@ describe('UsersService', () => {
       await expect(service.setServiceCategory('u1', 'plumber')).rejects.toThrow(ForbiddenError);
     });
 
-    it('throws BadRequestError when already set', async () => {
-      users.findById.mockResolvedValue(
-        buildUser({ role: 'service_provider', serviceCategory: 'electrician' })
-      );
+    it('changes an already-set category — editable any time, not one-time', async () => {
+      const provider = buildUser({ role: 'service_provider', serviceCategory: 'electrician' });
+      const updated = { ...provider, serviceCategory: 'plumber' as const };
+      users.findById.mockResolvedValue(provider);
+      users.setServiceCategory.mockResolvedValue(updated);
 
-      await expect(service.setServiceCategory('u1', 'plumber')).rejects.toThrow(BadRequestError);
+      const result = await service.setServiceCategory('u1', 'plumber');
+
+      expect(users.setServiceCategory).toHaveBeenCalledWith('u1', 'plumber');
+      expect(result).toEqual(updated);
     });
 
     it('throws NotFoundError if the update races with a deletion', async () => {
-      users.findById.mockResolvedValue(buildUser({ role: 'service_provider', serviceCategory: null }));
+      users.findById.mockResolvedValue(
+        buildUser({ role: 'service_provider', serviceCategory: null })
+      );
       users.setServiceCategory.mockResolvedValue(null);
 
       await expect(service.setServiceCategory('u1', 'plumber')).rejects.toThrow(NotFoundError);

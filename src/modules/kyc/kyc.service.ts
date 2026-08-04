@@ -1,6 +1,7 @@
 import type { IKycRepository } from './kyc.repository';
 import { AdminKycRecord, KycRecord, NOT_STARTED_KYC_RECORD, SubmitKycInput } from './kyc.types';
 import type { KycStatus } from './kyc.model';
+import type { KycVerificationService } from './kyc-verification.service';
 import { BadRequestError, NotFoundError } from '@utils/errors';
 import { logger } from '@utils/logger';
 
@@ -11,7 +12,10 @@ import { logger } from '@utils/logger';
  * — there's no un-verify today.
  */
 export class KycService {
-  constructor(private readonly kyc: IKycRepository) {}
+  constructor(
+    private readonly kyc: IKycRepository,
+    private readonly verification: KycVerificationService
+  ) {}
 
   async getStatus(userId: string): Promise<KycRecord> {
     const record = await this.kyc.findByUserId(userId);
@@ -26,6 +30,18 @@ export class KycService {
     if (existing?.status === 'pending') {
       throw new BadRequestError('Your submission is already pending review');
     }
+
+    const [aadharVerified, panVerified] = await Promise.all([
+      this.verification.isAadharVerified(userId, input.aadharNumber),
+      this.verification.isPanVerified(userId, input.panNumber),
+    ]);
+    if (!aadharVerified) {
+      throw new BadRequestError('Verify your Aadhaar number before submitting');
+    }
+    if (!panVerified) {
+      throw new BadRequestError('Verify your PAN before submitting');
+    }
+
     const updated = await this.kyc.upsertSubmission(userId, input);
     logger.info('KYC submitted', { userId });
     return updated;

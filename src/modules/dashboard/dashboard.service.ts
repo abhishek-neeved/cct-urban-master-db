@@ -1,7 +1,7 @@
 import type { IUserRepository } from '@modules/auth/user.repository';
 import type { KycService } from '@modules/kyc/kyc.service';
 import type { CriminalRecordService } from '@modules/criminal-record/criminal-record.service';
-import type { SubscriptionsService } from '@modules/subscriptions/subscriptions.service';
+import type { OnboardingFeeService } from '@modules/onboarding-fee/onboarding-fee.service';
 import { NotFoundError } from '@utils/errors';
 import type { DashboardSummary } from './dashboard.types';
 
@@ -16,7 +16,7 @@ export class DashboardService {
     private readonly users: IUserRepository,
     private readonly kycService: KycService,
     private readonly criminalRecordService: CriminalRecordService,
-    private readonly subscriptionsService: SubscriptionsService
+    private readonly onboardingFeeService: OnboardingFeeService
   ) {}
 
   async getSummary(userId: string): Promise<DashboardSummary> {
@@ -25,17 +25,22 @@ export class DashboardService {
       throw new NotFoundError('User');
     }
 
-    const profile = { firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role };
+    const profile = {
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      role: user.role,
+    };
     if (user.role === 'customer') {
       return { user: profile };
     }
 
-    const [kyc, criminalRecord, subscription] = await Promise.all([
+    const [kyc, criminalRecord, onboardingFee] = await Promise.all([
       this.kycService.getStatus(userId),
       this.criminalRecordService.getStatus(userId),
-      this.subscriptionsService.getStatus(userId),
+      this.onboardingFeeService.getStatus(userId),
     ]);
 
-    return { user: profile, kyc, criminalRecord, subscription };
+    return { user: profile, kyc, criminalRecord, onboardingFee };
   }
 }

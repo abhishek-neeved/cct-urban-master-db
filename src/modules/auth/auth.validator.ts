@@ -7,9 +7,9 @@ export const registerSchema = z.object({
   lastName: z.string().min(1, 'Last name is required').max(120),
   email: z.string().email('A valid email is required'),
   password,
-  // The signup account-type choice — "provide a service" vs. "book a
-  // service". `admin` is excluded: never self-registered.
-  role: z.enum(['service_provider', 'customer']),
+  // No account-type choice at signup anymore — every self-registered account
+  // is a service_provider (see auth.service.ts#register). `customer`
+  // accounts and `admin` are never created through this endpoint.
 });
 
 export const loginSchema = z.object({

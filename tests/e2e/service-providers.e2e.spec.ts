@@ -6,11 +6,8 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
 const validKycSubmission = {
   aadharNumber: '123456789012',
-  aadharImageKey: 'kyc-aadhar/u1/a',
   panNumber: 'ABCDE1234F',
-  panImageKey: 'kyc-pan/u1/b',
   address: '221B Baker Street',
-  photographKey: 'kyc-photo/u1/c',
 };
 
 describe('Service Providers directory API (e2e)', () => {
@@ -23,13 +20,14 @@ describe('Service Providers directory API (e2e)', () => {
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  const registerAndLogin = async (
-    email: string,
-    role: 'service_provider' | 'customer' = 'customer'
-  ): Promise<string> => {
+  // Every self-registered account is a service_provider — there is no
+  // account-type choice at signup anymore. Tests that need a `customer` or
+  // `admin` promote the account directly in the database afterwards, same
+  // as the existing admin-promotion pattern.
+  const registerAndLogin = async (email: string): Promise<string> => {
     const registerRes = await request(app)
       .post('/api/auth/register')
-      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret', role });
+      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret' });
     const otp = registerRes.body.data.otpDevCode as string;
     await request(app).post('/api/auth/verify-otp').send({ email, otp }).expect(200);
     const loginRes = await request(app)
@@ -38,13 +36,39 @@ describe('Service Providers directory API (e2e)', () => {
     return loginRes.body.data.accessToken as string;
   };
 
+  const registerAsCustomer = async (email: string): Promise<string> => {
+    const token = await registerAndLogin(email);
+    await UserModel.updateOne({ email }, { role: 'customer' });
+    return token;
+  };
+
+  const verifyDocuments = async (accessToken: string): Promise<void> => {
+    const aadharReq = await request(app)
+      .post('/api/kyc/verify-aadhar/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ aadharNumber: validKycSubmission.aadharNumber });
+    await request(app)
+      .post('/api/kyc/verify-aadhar/confirm')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ otp: aadharReq.body.data.devOtp });
+
+    const panReq = await request(app)
+      .post('/api/kyc/verify-pan/request')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ panNumber: validKycSubmission.panNumber });
+    await request(app)
+      .post('/api/kyc/verify-pan/confirm')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ otp: panReq.body.data.devOtp });
+  };
+
   const makeVerifiedProvider = async (
     email: string,
     firstName: string,
     category: string,
     phoneNumber: string
   ): Promise<void> => {
-    const providerToken = await registerAndLogin(email, 'service_provider');
+    const providerToken = await registerAndLogin(email);
     await request(app)
       .patch('/api/users/me/service-category')
       .set('Authorization', `Bearer ${providerToken}`)
@@ -53,13 +77,16 @@ describe('Service Providers directory API (e2e)', () => {
       .patch('/api/users/me')
       .set('Authorization', `Bearer ${providerToken}`)
       .send({ firstName, phoneNumber });
+    await verifyDocuments(providerToken);
     await request(app)
       .post('/api/kyc/submit')
       .set('Authorization', `Bearer ${providerToken}`)
       .send(validKycSubmission);
-    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${providerToken}`);
+    const me = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${providerToken}`);
     const userId = me.body.data.user.id;
-    const adminToken = await registerAndLogin(`admin-${email}`, 'customer');
+    const adminToken = await registerAndLogin(`admin-${email}`);
     await UserModel.updateOne({ email: `admin-${email}` }, { role: 'admin' });
     await request(app)
       .patch(`/api/admin/kyc/${userId}/approve`)
@@ -68,12 +95,12 @@ describe('Service Providers directory API (e2e)', () => {
 
   it('lists only KYC-verified service providers', async () => {
     await makeVerifiedProvider('verified-plumber@example.com', 'Priya', 'plumber', '+919876543210');
-    const providerToken = await registerAndLogin('unverified-electrician@example.com', 'service_provider');
+    const providerToken = await registerAndLogin('unverified-electrician@example.com');
     await request(app)
       .patch('/api/users/me/service-category')
       .set('Authorization', `Bearer ${providerToken}`)
       .send({ serviceCategory: 'electrician' });
-    const customerToken = await registerAndLogin('customer1@example.com', 'customer');
+    const customerToken = await registerAsCustomer('customer1@example.com');
 
     const res = await request(app)
       .get('/api/service-providers')
@@ -81,14 +108,19 @@ describe('Service Providers directory API (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.providers).toEqual([
-      { firstName: 'Priya', lastName: 'User', serviceCategory: 'plumber', phoneNumber: '+919876543210' },
+      {
+        firstName: 'Priya',
+        lastName: 'User',
+        serviceCategory: 'plumber',
+        phoneNumber: '+919876543210',
+      },
     ]);
   });
 
   it('filters by category', async () => {
     await makeVerifiedProvider('plumber-a@example.com', 'Amit', 'plumber', '+911111111111');
     await makeVerifiedProvider('electrician-a@example.com', 'Bala', 'electrician', '+912222222222');
-    const customerToken = await registerAndLogin('customer2@example.com', 'customer');
+    const customerToken = await registerAsCustomer('customer2@example.com');
 
     const res = await request(app)
       .get('/api/service-providers')
@@ -102,7 +134,7 @@ describe('Service Providers directory API (e2e)', () => {
 
   it('is accessible to admin too', async () => {
     await makeVerifiedProvider('plumber-b@example.com', 'Chetan', 'plumber', '+913333333333');
-    const adminToken = await registerAndLogin('admin-direct@example.com', 'customer');
+    const adminToken = await registerAndLogin('admin-direct@example.com');
     await UserModel.updateOne({ email: 'admin-direct@example.com' }, { role: 'admin' });
 
     const res = await request(app)
@@ -114,7 +146,7 @@ describe('Service Providers directory API (e2e)', () => {
   });
 
   it('rejects a service_provider caller with 403', async () => {
-    const providerToken = await registerAndLogin('provider-caller@example.com', 'service_provider');
+    const providerToken = await registerAndLogin('provider-caller@example.com');
 
     const res = await request(app)
       .get('/api/service-providers')
@@ -128,7 +160,7 @@ describe('Service Providers directory API (e2e)', () => {
   });
 
   it('rejects an invalid category with 422', async () => {
-    const customerToken = await registerAndLogin('customer3@example.com', 'customer');
+    const customerToken = await registerAsCustomer('customer3@example.com');
 
     const res = await request(app)
       .get('/api/service-providers')

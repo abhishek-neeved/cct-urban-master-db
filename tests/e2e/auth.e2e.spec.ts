@@ -15,7 +15,6 @@ const credentials = {
   lastName: 'Lovelace',
   email: 'ada@example.com',
   password: 'supersecret',
-  role: 'customer',
 };
 
 describe('Auth API (e2e)', () => {
@@ -45,13 +44,13 @@ describe('Auth API (e2e)', () => {
     return otp;
   };
 
-  it('registers a new user unverified, without issuing tokens, and emails an OTP', async () => {
+  it('registers a new user unverified as a service_provider, without issuing tokens, and emails an OTP', async () => {
     const res = await register();
 
     expect(res.status).toBe(201);
     expect(res.body.data.user.email).toBe(credentials.email);
     expect(res.body.data.user.isVerified).toBe(false);
-    expect(res.body.data.user.role).toBe('customer');
+    expect(res.body.data.user.role).toBe('service_provider');
     expect(res.body.data.user).not.toHaveProperty('password');
     expect(res.body.data).not.toHaveProperty('accessToken');
     expect(res.body.data).not.toHaveProperty('refreshToken');

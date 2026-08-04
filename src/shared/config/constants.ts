@@ -13,7 +13,6 @@ export const MIN_PROD_SECRET_LENGTH = 32;
 /** Fallback Razorpay config for local dev — all rejected in production (see env.ts). */
 export const DEFAULT_RAZORPAY_KEY_ID = 'rzp_test_placeholder';
 export const DEFAULT_RAZORPAY_KEY_SECRET = 'dev-razorpay-secret-change-me';
-export const DEFAULT_RAZORPAY_PLAN_ID = 'plan_placeholder';
 export const DEFAULT_RAZORPAY_WEBHOOK_SECRET = 'dev-webhook-secret-change-me';
 
 /** Allowed range for bcrypt salt rounds (floor kept high enough to be costly). */

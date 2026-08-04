@@ -14,19 +14,24 @@ describe('Criminal Record API (e2e)', () => {
   afterEach(clearTestDb);
   afterAll(closeTestDb);
 
-  const registerAndLogin = async (
-    email: string,
-    role: 'service_provider' | 'customer' = 'service_provider'
-  ): Promise<string> => {
+  // Every self-registered account is a service_provider — there is no
+  // account-type choice at signup anymore.
+  const registerAndLogin = async (email: string): Promise<string> => {
     const registerRes = await request(app)
       .post('/api/auth/register')
-      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret', role });
+      .send({ firstName: 'Test', lastName: 'User', email, password: 'supersecret' });
     const otp = registerRes.body.data.otpDevCode as string;
     await request(app).post('/api/auth/verify-otp').send({ email, otp }).expect(200);
     const loginRes = await request(app)
       .post('/api/auth/login')
       .send({ email, password: 'supersecret' });
     return loginRes.body.data.accessToken as string;
+  };
+
+  const registerAsCustomer = async (email: string): Promise<string> => {
+    const accessToken = await registerAndLogin(email);
+    await UserModel.updateOne({ email }, { role: 'customer' });
+    return accessToken;
   };
 
   const registerAdmin = async (email: string): Promise<string> => {
@@ -52,7 +57,7 @@ describe('Criminal Record API (e2e)', () => {
     });
 
     it('rejects a customer with 403', async () => {
-      const accessToken = await registerAndLogin('customer1@example.com', 'customer');
+      const accessToken = await registerAsCustomer('customer1@example.com');
 
       const res = await request(app)
         .get('/api/criminal-record/me')

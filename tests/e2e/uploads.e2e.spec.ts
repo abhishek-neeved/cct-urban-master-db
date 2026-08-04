@@ -12,7 +12,6 @@ const credentials = {
   lastName: 'Lovelace',
   email: 'ada@example.com',
   password: 'supersecret',
-  role: 'customer',
 };
 
 describe('Uploads API (e2e)', () => {
@@ -84,7 +83,7 @@ describe('Uploads API (e2e)', () => {
   });
 
   describe('GET /api/uploads/view', () => {
-    it("returns a view URL for a key the caller owns", async () => {
+    it('returns a view URL for a key the caller owns', async () => {
       const accessToken = await login();
       const presign = await request(app)
         .post('/api/uploads/presign')
@@ -101,7 +100,7 @@ describe('Uploads API (e2e)', () => {
       expect(res.body.data.viewUrl).toEqual(expect.any(String));
     });
 
-    it("rejects with 403 for a key owned by a different user", async () => {
+    it('rejects with 403 for a key owned by a different user', async () => {
       const ownerToken = await login();
       const presign = await request(app)
         .post('/api/uploads/presign')
