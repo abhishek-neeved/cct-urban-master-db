@@ -75,6 +75,7 @@ describe('env config', () => {
     vi.stubEnv('RAZORPAY_KEY_ID', 'rzp_live_real');
     vi.stubEnv('RAZORPAY_KEY_SECRET', 'a-real-secret');
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'a-real-webhook-secret');
+    vi.stubEnv('MOBILE_VERIFICATION_API_KEY', 'a-real-mobile-verification-api-key');
   };
 
   it('accepts a correctly configured production environment', async () => {
@@ -125,6 +126,7 @@ describe('env config', () => {
     ['RAZORPAY_KEY_ID', 'rzp_test_placeholder'],
     ['RAZORPAY_KEY_SECRET', 'dev-razorpay-secret-change-me'],
     ['RAZORPAY_WEBHOOK_SECRET', 'dev-webhook-secret-change-me'],
+    ['MOBILE_VERIFICATION_API_KEY', 'mobile-verification-api-key-placeholder'],
   ])(
     'rejects a production boot that leaves %s at its dev placeholder',
     async (key, placeholder) => {

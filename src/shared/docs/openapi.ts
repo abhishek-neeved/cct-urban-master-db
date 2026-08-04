@@ -136,16 +136,20 @@ const options: swaggerJSDoc.Options = {
         KycRecord: {
           type: 'object',
           description:
-            '`not_started` has no submitted fields — every field below is absent until first submission.',
+            'Built up incrementally: the row is created by the first successful /verify-mobile/confirm call and stays `not_started` until /submit, which requires mobileVerified/aadhaarVerified/panVerified all true.',
           properties: {
             status: { type: 'string', enum: ['not_started', 'pending', 'verified', 'rejected'] },
+            mobileNumber: { type: 'string', example: '9876543210' },
+            mobileVerified: { type: 'boolean' },
             aadharNumber: { type: 'string', example: '123456789012' },
+            aadhaarVerified: { type: 'boolean' },
             panNumber: { type: 'string', example: 'ABCDE1234F' },
+            panVerified: { type: 'boolean' },
             address: { type: 'string' },
             submittedAt: { type: 'string', format: 'date-time' },
             rejectionReason: { type: 'string' },
           },
-          required: ['status'],
+          required: ['status', 'mobileVerified', 'aadhaarVerified', 'panVerified'],
         },
         AdminKycRecord: {
           allOf: [
@@ -165,46 +169,53 @@ const options: swaggerJSDoc.Options = {
         SubmitKycRequest: {
           type: 'object',
           description:
-            'aadharNumber/panNumber must already be verified via /api/kyc/verify-aadhar/* and /api/kyc/verify-pan/*.',
+            'Mobile/Aadhaar/PAN must already be verified via /api/kyc/verify-mobile/*, /verify-aadhaar, and /verify-pan.',
           properties: {
-            aadharNumber: { type: 'string', pattern: '^\\d{12}$', example: '123456789012' },
-            panNumber: { type: 'string', pattern: '^[A-Z]{5}\\d{4}[A-Z]$', example: 'ABCDE1234F' },
             address: { type: 'string', minLength: 1 },
           },
-          required: ['aadharNumber', 'panNumber', 'address'],
+          required: ['address'],
         },
-        RequestAadharVerificationRequest: {
+        RequestMobileVerificationRequest: {
           type: 'object',
           properties: {
-            aadharNumber: { type: 'string', pattern: '^\\d{12}$', example: '123456789012' },
+            mobileNumber: { type: 'string', pattern: '^[6-9]\\d{9}$', example: '9876543210' },
           },
-          required: ['aadharNumber'],
+          required: ['mobileNumber'],
         },
-        RequestPanVerificationRequest: {
+        RequestMobileVerificationResult: {
           type: 'object',
           properties: {
-            panNumber: { type: 'string', pattern: '^[A-Z]{5}\\d{4}[A-Z]$', example: 'ABCDE1234F' },
-          },
-          required: ['panNumber'],
-        },
-        ConfirmVerificationOtpRequest: {
-          type: 'object',
-          properties: {
-            otp: { type: 'string', pattern: '^\\d{6}$', example: '042317' },
-          },
-          required: ['otp'],
-        },
-        VerificationRequestResult: {
-          type: 'object',
-          properties: {
-            maskedMobileNumber: { type: 'string', example: '9XXXXX4321' },
             devOtp: {
               type: 'string',
               pattern: '^\\d{6}$',
               description: 'Only present outside production — a local-testing convenience.',
             },
           },
-          required: ['maskedMobileNumber'],
+        },
+        ConfirmOtpRequest: {
+          type: 'object',
+          properties: {
+            otp: { type: 'string', pattern: '^\\d{6}$', example: '042317' },
+          },
+          required: ['otp'],
+        },
+        VerifyAadhaarRequest: {
+          type: 'object',
+          description:
+            'Compared against the mobile-to-pan lookup for the already-verified mobile number (last 4 digits only — the lookup never discloses the full Aadhaar number).',
+          properties: {
+            aadharNumber: { type: 'string', pattern: '^\\d{12}$', example: '123456789012' },
+          },
+          required: ['aadharNumber'],
+        },
+        VerifyPanRequest: {
+          type: 'object',
+          description:
+            'Compared against the mobile-to-pan lookup for the already-verified mobile number.',
+          properties: {
+            panNumber: { type: 'string', pattern: '^[A-Z]{5}\\d{4}[A-Z]$', example: 'ABCDE1234F' },
+          },
+          required: ['panNumber'],
         },
         RejectKycRequest: {
           type: 'object',

@@ -54,6 +54,7 @@ describe('logger', () => {
     vi.stubEnv('RAZORPAY_KEY_ID', 'rzp_live_real');
     vi.stubEnv('RAZORPAY_KEY_SECRET', 'a-real-secret');
     vi.stubEnv('RAZORPAY_WEBHOOK_SECRET', 'a-real-webhook-secret');
+    vi.stubEnv('MOBILE_VERIFICATION_API_KEY', 'a-real-mobile-verification-api-key');
     const { logger } = await import('@utils/logger');
 
     const cap = attachCapture(logger);

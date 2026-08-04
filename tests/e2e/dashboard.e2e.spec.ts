@@ -1,13 +1,22 @@
 import request from 'supertest';
+import { vi } from 'vitest';
 import { Application } from 'express';
 import { createApp } from '@/app';
 import { UserModel } from '@modules/auth/auth.model';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
-const validSubmission = {
-  aadharNumber: '123456789012',
-  panNumber: 'ABCDE1234F',
-  address: '221B Baker Street',
+/** See kyc.e2e.spec.ts — the mobile-to-pan lookup is a real third-party API, stubbed here via fetch. */
+const fetchMock = vi.fn();
+
+const jsonResponse = (body: unknown): Response =>
+  ({ ok: true, status: 200, json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
+
+const MOBILE_NUMBER = '9876543210';
+const LOOKUP = {
+  pan_number: 'ABCDE1234F',
+  full_name: 'Ada Lovelace',
+  masked_aadhaar: 'XXXXXXXX9012',
+  address: { full: '221B Baker Street' },
 };
 
 describe('Dashboard API (e2e)', () => {
@@ -19,6 +28,16 @@ describe('Dashboard API (e2e)', () => {
   });
   afterEach(clearTestDb);
   afterAll(closeTestDb);
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse({ success: true, data: LOOKUP }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
 
   // Every self-registered account is a service_provider — there is no
   // account-type choice at signup anymore.
@@ -34,24 +53,25 @@ describe('Dashboard API (e2e)', () => {
     return loginRes.body.data.accessToken as string;
   };
 
-  const verifyDocuments = async (accessToken: string): Promise<void> => {
-    const aadharReq = await request(app)
-      .post('/api/kyc/verify-aadhar/request')
+  const verifyEverything = async (accessToken: string): Promise<void> => {
+    const mobileReq = await request(app)
+      .post('/api/kyc/verify-mobile/request')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ aadharNumber: validSubmission.aadharNumber });
+      .send({ mobileNumber: MOBILE_NUMBER });
     await request(app)
-      .post('/api/kyc/verify-aadhar/confirm')
+      .post('/api/kyc/verify-mobile/confirm')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ otp: aadharReq.body.data.devOtp });
+      .send({ otp: mobileReq.body.data.devOtp });
 
-    const panReq = await request(app)
-      .post('/api/kyc/verify-pan/request')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ panNumber: validSubmission.panNumber });
     await request(app)
-      .post('/api/kyc/verify-pan/confirm')
+      .post('/api/kyc/verify-aadhaar')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ otp: panReq.body.data.devOtp });
+      .send({ aadharNumber: `00000000${LOOKUP.masked_aadhaar.slice(-4)}` });
+
+    await request(app)
+      .post('/api/kyc/verify-pan')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ panNumber: LOOKUP.pan_number });
   };
 
   it('composes profile, default KYC/criminal-record/onboarding-fee statuses for a brand-new service provider', async () => {
@@ -69,7 +89,12 @@ describe('Dashboard API (e2e)', () => {
         email: 'dash1@example.com',
         role: 'service_provider',
       },
-      kyc: { status: 'not_started' },
+      kyc: {
+        status: 'not_started',
+        mobileVerified: false,
+        aadhaarVerified: false,
+        panVerified: false,
+      },
       criminalRecord: { status: 'pending' },
       onboardingFee: { status: 'unpaid', amountInRupees: 10 },
     });
@@ -96,11 +121,11 @@ describe('Dashboard API (e2e)', () => {
 
   it('reflects real KYC and criminal-record state after admin review', async () => {
     const accessToken = await registerAndLogin('dash2@example.com');
-    await verifyDocuments(accessToken);
+    await verifyEverything(accessToken);
     await request(app)
       .post('/api/kyc/submit')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send(validSubmission);
+      .send({ address: '221B Baker Street' });
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
     const userId = me.body.data.user.id;
     await UserModel.updateOne({ email: 'dash2@example.com' }, { role: 'admin' });

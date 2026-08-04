@@ -15,6 +15,9 @@ export const DEFAULT_RAZORPAY_KEY_ID = 'rzp_test_placeholder';
 export const DEFAULT_RAZORPAY_KEY_SECRET = 'dev-razorpay-secret-change-me';
 export const DEFAULT_RAZORPAY_WEBHOOK_SECRET = 'dev-webhook-secret-change-me';
 
+/** Fallback mobile-verification API key for local dev — rejected in production (see env.ts). */
+export const DEFAULT_MOBILE_VERIFICATION_API_KEY = 'mobile-verification-api-key-placeholder';
+
 /** Allowed range for bcrypt salt rounds (floor kept high enough to be costly). */
 export const BCRYPT_SALT_ROUNDS = { min: 10, max: 15, default: 12 } as const;
 

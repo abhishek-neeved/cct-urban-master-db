@@ -6,7 +6,7 @@ import {
   RefreshTokenModel,
   LoginAttemptModel,
 } from '@modules/auth/auth.model';
-import { KycModel } from '@modules/kyc/kyc.model';
+import { KycModel, KycOtpModel } from '@modules/kyc/kyc.model';
 import { OnboardingFeeModel } from '@modules/onboarding-fee/onboarding-fee.model';
 import { CriminalRecordModel } from '@modules/criminal-record/criminal-record.model';
 
@@ -25,6 +25,7 @@ export const connectTestDb = async (): Promise<void> => {
     RefreshTokenModel.init(),
     LoginAttemptModel.init(),
     KycModel.init(),
+    KycOtpModel.init(),
     OnboardingFeeModel.init(),
     CriminalRecordModel.init(),
   ]);
@@ -37,6 +38,7 @@ export const clearTestDb = async (): Promise<void> => {
   await UserModel.deleteMany({});
   await LoginAttemptModel.deleteMany({});
   await KycModel.deleteMany({});
+  await KycOtpModel.deleteMany({});
   await OnboardingFeeModel.deleteMany({});
   await CriminalRecordModel.deleteMany({});
 };

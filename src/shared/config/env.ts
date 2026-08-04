@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   BCRYPT_SALT_ROUNDS,
   DEFAULT_ACCESS_SECRET,
+  DEFAULT_MOBILE_VERIFICATION_API_KEY,
   DEFAULT_RAZORPAY_KEY_ID,
   DEFAULT_RAZORPAY_KEY_SECRET,
   DEFAULT_RAZORPAY_WEBHOOK_SECRET,
@@ -87,6 +88,14 @@ const envSchema = z
     // Shared secret configured on the webhook endpoint in the Razorpay
     // dashboard; used to verify `X-Razorpay-Signature` on incoming webhooks.
     RAZORPAY_WEBHOOK_SECRET: z.string().min(1).default(DEFAULT_RAZORPAY_WEBHOOK_SECRET),
+
+    // CoinCircleTrust API-product platform (see @modules/kyc's mobile
+    // verification) — a real, billed third-party lookup, not a mock.
+    MOBILE_VERIFICATION_API_URL: z
+      .string()
+      .url()
+      .default('https://apis.coincircletrust.com/api/v1/apiProduct/mobile-to-pan'),
+    MOBILE_VERIFICATION_API_KEY: z.string().min(1).default(DEFAULT_MOBILE_VERIFICATION_API_KEY),
   })
   .superRefine((val, ctx) => {
     // Never boot production with the shared dev secret or a weak one.
@@ -127,13 +136,14 @@ const envSchema = z
     // Never boot production still pointed at placeholder Razorpay config — a
     // real key/secret/webhook-secret must be set, same guard shape as
     // JWT_ACCESS_SECRET above.
-    const razorpayDefaults: Array<[keyof typeof val, string]> = [
+    const productionRequiredDefaults: Array<[keyof typeof val, string]> = [
       ['RAZORPAY_KEY_ID', DEFAULT_RAZORPAY_KEY_ID],
       ['RAZORPAY_KEY_SECRET', DEFAULT_RAZORPAY_KEY_SECRET],
       ['RAZORPAY_WEBHOOK_SECRET', DEFAULT_RAZORPAY_WEBHOOK_SECRET],
+      ['MOBILE_VERIFICATION_API_KEY', DEFAULT_MOBILE_VERIFICATION_API_KEY],
     ];
     if (val.NODE_ENV === 'production') {
-      for (const [key, placeholder] of razorpayDefaults) {
+      for (const [key, placeholder] of productionRequiredDefaults) {
         if (val[key] === placeholder) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,

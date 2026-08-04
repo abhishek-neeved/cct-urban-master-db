@@ -431,51 +431,61 @@ curl "http://localhost:3000/api/uploads/view?key=kyc-aadhar/<userId>/<uuid>" \
 
 ## KYC
 
-Identity verification: submit Aadhar/PAN/photograph, then wait for admin
-review. The state machine has exactly one loop-back edge:
+Identity verification built up incrementally, then submitted for admin
+review. No document uploads, no full identity data stored — only the
+pass/fail outcome for each field:
 
 ```
-not_started ──submit──▶ pending ──approve──▶ verified (terminal)
-                 ▲          │
-                 └─reject───┘
+                        ┌─ verify-mobile/* ─▶ mobileVerified
+not_started (row exists ├─ verify-aadhaar ──▶ aadhaarVerified  ──submit──▶ pending ──approve──▶ verified (terminal)
+ once mobile verifies)  └─ verify-pan ──────▶ panVerified                     ▲          │
+                                                                              └─reject───┘
 ```
 
-`not_started` has no document in the database — it's the default `GET
-/api/kyc/me` returns when the user has never submitted. A rejection can
-always be resubmitted (clearing the previous `rejectionReason` and
-re-entering the queue as `pending`); `verified` is terminal — there is no
-un-verify today.
+Verification order is enforced: **mobile number first** (proven by OTP — the
+only OTP round-trip in this flow), then Aadhaar/PAN, each proven by calling
+CoinCircleTrust's mobile-to-pan lookup for the *already-verified* mobile
+number and comparing its result against what the user typed:
 
-> **Image fields are S3 keys, not files.** `aadharImageKey`, `panImageKey`,
-> and `photographKey` are object keys returned by `POST /api/uploads/presign`
-> (see the Uploads section above) — upload the files there first, then submit
-> their keys here.
+- **Aadhaar** — compares only the **last 4 digits** against the lookup's
+  `masked_aadhaar`, since that's the only part of the real number the API
+  ever discloses.
+- **PAN** — compares the full value against the lookup's `pan_number`.
+
+`GET /api/kyc/me` returns `{"status":"not_started", "mobileVerified":false,
+"aadhaarVerified":false, "panVerified":false}` both when no row exists yet
+*and* right up until mobile verification succeeds and creates one — from the
+client's perspective there's no visible difference. A rejection can always be
+resubmitted (clearing the previous `rejectionReason` and re-entering the
+queue as `pending`, verification flags untouched); `verified` is terminal —
+there is no un-verify today.
 
 ### `GET /api/kyc/me`
 
-Return the authenticated user's KYC status and, once submitted, their data.
+Return the authenticated user's KYC status and verification progress.
 **Protected.**
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
-**200** (before any submission)
+**200** (before any verification)
 ```json
-{ "success": true, "data": { "status": "not_started" }, "requestId": "…" }
+{
+  "success": true,
+  "data": { "status": "not_started", "mobileVerified": false, "aadhaarVerified": false, "panVerified": false },
+  "requestId": "…"
+}
 ```
 
-**200** (after submission)
+**200** (mobile verified, Aadhaar/PAN pending)
 ```json
 {
   "success": true,
   "data": {
-    "status": "pending",
-    "aadharNumber": "123456789012",
-    "aadharImageKey": "kyc-aadhar/<userId>/<uuid>",
-    "panNumber": "ABCDE1234F",
-    "panImageKey": "kyc-pan/<userId>/<uuid>",
-    "address": "221B Baker Street",
-    "photographKey": "kyc-photo/<userId>/<uuid>",
-    "submittedAt": "…"
+    "status": "not_started",
+    "mobileNumber": "9876543210",
+    "mobileVerified": true,
+    "aadhaarVerified": false,
+    "panVerified": false
   },
   "requestId": "…"
 }
@@ -483,38 +493,93 @@ Return the authenticated user's KYC status and, once submitted, their data.
 
 **Errors:** `401` missing/invalid access token
 
-### `POST /api/kyc/submit`
+### `POST /api/kyc/verify-mobile/request`
 
-Submit (or resubmit, after a rejection) identity documents for review.
+Request an OTP to verify a mobile number — the first step; Aadhaar/PAN
+verification requires this to succeed first. Re-requesting for a different
+number replaces any pending OTP.
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
-**Body**
+**Body:** `mobileNumber` (required, 10 digits, starting 6-9)
 
-| Field            | Rules                                          |
-| ---------------- | ------------------------------------------------ |
-| `aadharNumber`   | required, exactly 12 digits                    |
-| `aadharImageKey` | required — key from `POST /api/uploads/presign` |
-| `panNumber`      | required, format `ABCDE1234F`                  |
-| `panImageKey`    | required — key from `POST /api/uploads/presign` |
-| `dateOfBirth`    | optional, ISO date                             |
-| `address`        | required                                       |
-| `photographKey`  | required — key from `POST /api/uploads/presign` |
-| `uan`            | optional, exactly 14 digits if present         |
+**200** → `{ "success": true, "data": { "devOtp": "042317" }, "requestId": "…" }` (`devOtp` only outside production)
+
+**Errors:** `401` missing/invalid access token · `403` caller is not a service provider · `422` invalid body
+
+### `POST /api/kyc/verify-mobile/confirm`
+
+Confirm the OTP sent for mobile-number verification. Creates the KYC row on
+first success (see the state diagram above).
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body:** `otp` (required, 6 digits)
+
+**200** → the updated record, `mobileVerified: true`
+
+**Errors:** `400` invalid or expired code · `401` missing/invalid access token · `403` caller is not a service provider · `422` invalid body
+
+### `POST /api/kyc/verify-aadhaar`
+
+Verify an Aadhaar number by comparing its last 4 digits against the
+mobile-to-pan lookup for the already-verified mobile number.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body:** `aadharNumber` (required, exactly 12 digits)
+
+**200** → the updated record, `aadhaarVerified: true`
+
+**Errors:** `400` mobile number not verified yet, or the Aadhaar doesn't match · `401` missing/invalid access token · `403` caller is not a service provider · `422` invalid body
+
+### `POST /api/kyc/verify-pan`
+
+Verify a PAN by comparing it against the mobile-to-pan lookup for the
+already-verified mobile number.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body:** `panNumber` (required, format `ABCDE1234F`)
+
+**200** → the updated record, `panVerified: true`
+
+**Errors:** `400` mobile number not verified yet, or the PAN doesn't match · `401` missing/invalid access token · `403` caller is not a service provider · `422` invalid body
+
+### `POST /api/kyc/submit`
+
+Submit (or resubmit, after a rejection) KYC for review. Requires
+`mobileVerified`, `aadhaarVerified`, and `panVerified` to already be `true`.
+
+**Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
+
+**Body:** `address` (required, non-empty)
 
 **200** → the updated record, `status: "pending"`
 
-**Errors:** `400` already verified, or already pending review · `401` missing/invalid access token · `422` invalid body
+**Errors:** `400` already verified, already pending review, or mobile/Aadhaar/PAN not yet verified · `401` missing/invalid access token · `422` invalid body
 
 ```bash
+# 1. Verify mobile
+curl -X POST http://localhost:3000/api/kyc/verify-mobile/request \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"mobileNumber":"9876543210"}'
+curl -X POST http://localhost:3000/api/kyc/verify-mobile/confirm \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"otp":"042317"}'
+
+# 2. Verify Aadhaar and PAN (order doesn't matter between these two)
+curl -X POST http://localhost:3000/api/kyc/verify-aadhaar \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"aadharNumber":"123456789012"}'
+curl -X POST http://localhost:3000/api/kyc/verify-pan \
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"panNumber":"ABCDE1234F"}'
+
+# 3. Submit
 curl -X POST http://localhost:3000/api/kyc/submit \
-  -H "Authorization: Bearer <accessToken>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "aadharNumber":"123456789012","aadharImageKey":"kyc-aadhar/u1/a1",
-    "panNumber":"ABCDE1234F","panImageKey":"kyc-pan/u1/a2",
-    "address":"221B Baker Street","photographKey":"kyc-photo/u1/a3"
-  }'
+  -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+  -d '{"address":"221B Baker Street"}'
 ```
 
 ### Admin review

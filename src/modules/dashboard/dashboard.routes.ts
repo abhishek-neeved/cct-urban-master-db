@@ -4,10 +4,8 @@ import { DashboardService } from './dashboard.service';
 import { UserRepository } from '@modules/auth/user.repository';
 import { KycService } from '@modules/kyc/kyc.service';
 import { KycRepository } from '@modules/kyc/kyc.repository';
-import { KycVerificationService } from '@modules/kyc/kyc-verification.service';
-import { KycVerificationOtpRepository } from '@modules/kyc/kyc-verification-otp.repository';
-import { KycVerifiedDocumentRepository } from '@modules/kyc/kyc-verified-document.repository';
-import { MockKycVerificationProvider } from '@shared/services/kyc-verification.service';
+import { KycOtpRepository } from '@modules/kyc/kyc-otp.repository';
+import { HttpMobileVerificationProvider } from '@shared/services/mobile-verification.service';
 import { CriminalRecordService } from '@modules/criminal-record/criminal-record.service';
 import { CriminalRecordRepository } from '@modules/criminal-record/criminal-record.repository';
 import { OnboardingFeeService } from '@modules/onboarding-fee/onboarding-fee.service';
@@ -27,13 +25,12 @@ import { requireAuth } from '@middleware/require-auth';
 export const createDashboardModule = (): Router => {
   const users = new UserRepository();
   // Dashboard only reads KYC status (getStatus) — never verifies/submits —
-  // but KycService's constructor needs a KycVerificationService regardless.
-  const kycVerificationService = new KycVerificationService(
-    new MockKycVerificationProvider(),
-    new KycVerificationOtpRepository(),
-    new KycVerifiedDocumentRepository()
+  // but KycService's constructor needs the same dependencies regardless.
+  const kycService = new KycService(
+    new KycRepository(),
+    new KycOtpRepository(),
+    new HttpMobileVerificationProvider()
   );
-  const kycService = new KycService(new KycRepository(), kycVerificationService);
   const criminalRecordService = new CriminalRecordService(new CriminalRecordRepository());
   const onboardingFeeService = new OnboardingFeeService(
     new OnboardingFeeRepository(),

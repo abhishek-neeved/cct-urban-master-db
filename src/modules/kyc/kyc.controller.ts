@@ -1,7 +1,6 @@
 import { Request, RequestHandler, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { KycService } from './kyc.service';
-import { KycVerificationService } from './kyc-verification.service';
 import type { KycStatus } from './kyc.model';
 import { asyncHandler } from '@middleware/async-handler';
 import { success } from '@models/api-response';
@@ -12,45 +11,39 @@ import { success } from '@models/api-response';
  * map service results to responses.
  */
 export class KycController {
-  constructor(
-    private readonly kycService: KycService,
-    private readonly verificationService: KycVerificationService
-  ) {}
+  constructor(private readonly kycService: KycService) {}
 
   me: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
     const record = await this.kycService.getStatus(req.userId as string);
     res.status(StatusCodes.OK).json(success(record, req.id));
   });
 
-  submit: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const record = await this.kycService.submit(req.userId as string, req.body);
+  requestMobileVerification: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const result = await this.kycService.requestMobileVerification(
+      req.userId as string,
+      req.body.mobileNumber
+    );
+    res.status(StatusCodes.OK).json(success(result, req.id));
+  });
+
+  confirmMobileOtp: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const record = await this.kycService.confirmMobileOtp(req.userId as string, req.body.otp);
     res.status(StatusCodes.OK).json(success(record, req.id));
   });
 
-  requestAadharVerification: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const result = await this.verificationService.requestAadharVerification(
-      req.userId as string,
-      req.body.aadharNumber
-    );
-    res.status(StatusCodes.OK).json(success(result, req.id));
+  verifyAadhaar: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const record = await this.kycService.verifyAadhaar(req.userId as string, req.body.aadharNumber);
+    res.status(StatusCodes.OK).json(success(record, req.id));
   });
 
-  verifyAadharOtp: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    await this.verificationService.verifyAadharOtp(req.userId as string, req.body.otp);
-    res.status(StatusCodes.OK).json(success({ verified: true }, req.id));
+  verifyPan: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const record = await this.kycService.verifyPan(req.userId as string, req.body.panNumber);
+    res.status(StatusCodes.OK).json(success(record, req.id));
   });
 
-  requestPanVerification: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const result = await this.verificationService.requestPanVerification(
-      req.userId as string,
-      req.body.panNumber
-    );
-    res.status(StatusCodes.OK).json(success(result, req.id));
-  });
-
-  verifyPanOtp: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    await this.verificationService.verifyPanOtp(req.userId as string, req.body.otp);
-    res.status(StatusCodes.OK).json(success({ verified: true }, req.id));
+  submit: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    const record = await this.kycService.submit(req.userId as string, req.body);
+    res.status(StatusCodes.OK).json(success(record, req.id));
   });
 
   listForReview: RequestHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -91,7 +91,7 @@ describe('OnboardingFeeService', () => {
 
       expect(gateway.createPaymentLink).toHaveBeenCalledWith({
         amountInRupees: 10,
-        referenceId: 'u1',
+        referenceId: expect.stringMatching(/^u1-\d+$/),
         description: 'CoinCircleTrust onboarding fee',
         callbackUrl: 'https://app.example.com/callback',
         customerEmail: 'ada@example.com',

@@ -1,19 +1,43 @@
 import { vi, type Mocked } from 'vitest';
-import { KycService } from '@modules/kyc/kyc.service';
 import type { IKycRepository } from '@modules/kyc/kyc.repository';
-import type { KycVerificationService } from '@modules/kyc/kyc-verification.service';
+import type { IKycOtpRepository, KycOtpRecord } from '@modules/kyc/kyc-otp.repository';
+import type {
+  IMobileVerificationProvider,
+  MobileToPanResult,
+} from '@shared/services/mobile-verification.service';
 import type { AdminKycRecord, KycRecord, SubmitKycInput } from '@modules/kyc/kyc.types';
+import { hashToken } from '@utils/token.util';
 import { BadRequestError, NotFoundError } from '@utils/errors';
+import { OTP_MAX_ATTEMPTS } from '@config/constants';
 
-const buildSubmission = (): SubmitKycInput => ({
-  aadharNumber: '123456789012',
-  panNumber: 'ABCDE1234F',
-  address: '221B Baker Street',
+// Mutable production flag, mirroring the pattern used elsewhere in this repo
+// (e.g. the deleted kyc-verification-provider.service.spec.ts,
+// email.service.spec.ts) for exercising `isProduction`'s branch explicitly
+// rather than relying on the real env default.
+const state = vi.hoisted(() => ({ isProduction: false }));
+vi.mock('@config/env', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@config/env')>()),
+  get isProduction() {
+    return state.isProduction;
+  },
+}));
+
+const { KycService } = await import('@modules/kyc/kyc.service');
+
+const buildOtp = (code: string, overrides: Partial<KycOtpRecord> = {}): KycOtpRecord => ({
+  id: '507f1f77bcf86cd799439099',
+  mobileNumber: '9876543210',
+  codeHash: hashToken(code),
+  attempts: 0,
+  createdAt: new Date('2020-01-01'),
+  ...overrides,
 });
 
 const buildRecord = (overrides: Partial<KycRecord> = {}): KycRecord => ({
-  status: 'pending',
-  submittedAt: new Date('2020-01-01'),
+  status: 'not_started',
+  mobileVerified: false,
+  aadhaarVerified: false,
+  panVerified: false,
   ...overrides,
 });
 
@@ -21,96 +45,295 @@ const buildAdminRecord = (overrides: Partial<AdminKycRecord> = {}): AdminKycReco
   id: 'kyc1',
   userId: 'u1',
   status: 'pending',
-  submittedAt: new Date('2020-01-01'),
+  mobileVerified: true,
+  aadhaarVerified: true,
+  panVerified: true,
+  ...overrides,
+});
+
+const buildLookup = (overrides: Partial<MobileToPanResult> = {}): MobileToPanResult => ({
+  pan_number: 'ABCDE1234F',
+  full_name: 'Test User',
+  masked_aadhaar: 'XXXXXXXX9012',
+  address: { full: '221B Baker Street' },
   ...overrides,
 });
 
 describe('KycService', () => {
   let kyc: Mocked<IKycRepository>;
-  let verification: Mocked<Pick<KycVerificationService, 'isAadharVerified' | 'isPanVerified'>>;
-  let service: KycService;
+  let otps: Mocked<IKycOtpRepository>;
+  let mobileVerificationProvider: Mocked<IMobileVerificationProvider>;
+  let service: InstanceType<typeof KycService>;
 
   beforeEach(() => {
+    state.isProduction = false;
     kyc = {
       findByUserId: vi.fn(),
-      upsertSubmission: vi.fn(),
+      findRowByUserId: vi.fn(),
+      setMobileVerified: vi.fn(),
+      setAadhaarVerified: vi.fn(),
+      setPanVerified: vi.fn(),
+      submit: vi.fn(),
       findAllForReview: vi.fn(),
       approve: vi.fn(),
       reject: vi.fn(),
     };
-    verification = {
-      isAadharVerified: vi.fn().mockResolvedValue(true),
-      isPanVerified: vi.fn().mockResolvedValue(true),
+    otps = {
+      findActiveForUser: vi.fn(),
+      replaceForUser: vi.fn(),
+      recordFailedAttempt: vi.fn(),
+      deleteForUser: vi.fn(),
     };
-    service = new KycService(kyc, verification as unknown as KycVerificationService);
+    mobileVerificationProvider = {
+      lookupByMobileNumber: vi.fn(),
+    };
+    service = new KycService(kyc, otps, mobileVerificationProvider);
   });
 
   describe('getStatus', () => {
-    it('returns "not_started" when no record exists', async () => {
+    it('returns the "not_started" default when no record exists', async () => {
       kyc.findByUserId.mockResolvedValue(null);
 
-      await expect(service.getStatus('u1')).resolves.toEqual({ status: 'not_started' });
+      await expect(service.getStatus('u1')).resolves.toEqual({
+        status: 'not_started',
+        mobileVerified: false,
+        aadhaarVerified: false,
+        panVerified: false,
+      });
     });
 
     it('returns the stored record when one exists', async () => {
-      const record = buildRecord();
+      const record = buildRecord({ status: 'pending', mobileVerified: true });
       kyc.findByUserId.mockResolvedValue(record);
 
       await expect(service.getStatus('u1')).resolves.toEqual(record);
     });
   });
 
-  describe('submit', () => {
-    it('creates a fresh submission when no record exists and both docs are verified', async () => {
-      kyc.findByUserId.mockResolvedValue(null);
-      const created = buildRecord();
-      kyc.upsertSubmission.mockResolvedValue(created);
+  describe('requestMobileVerification', () => {
+    it('stores a hashed OTP for the mobile number and returns the raw OTP outside production', async () => {
+      const result = await service.requestMobileVerification('u1', '9876543210');
 
-      const result = await service.submit('u1', buildSubmission());
-
-      expect(verification.isAadharVerified).toHaveBeenCalledWith('u1', '123456789012');
-      expect(verification.isPanVerified).toHaveBeenCalledWith('u1', 'ABCDE1234F');
-      expect(kyc.upsertSubmission).toHaveBeenCalledWith('u1', buildSubmission());
-      expect(result).toEqual(created);
+      expect(otps.replaceForUser).toHaveBeenCalledWith(
+        'u1',
+        '9876543210',
+        expect.any(String),
+        expect.any(Date)
+      );
+      expect(result.devOtp).toMatch(/^\d{6}$/);
+      const [, , storedHash] = otps.replaceForUser.mock.calls[0];
+      expect(storedHash).toBe(hashToken(result.devOtp as string));
     });
 
-    it('allows resubmission after a rejection', async () => {
-      kyc.findByUserId.mockResolvedValue(buildRecord({ status: 'rejected' }));
-      kyc.upsertSubmission.mockResolvedValue(buildRecord({ status: 'pending' }));
+    it('never returns the OTP in production, but still stores its hash', async () => {
+      state.isProduction = true;
 
-      await expect(service.submit('u1', buildSubmission())).resolves.toEqual(
-        buildRecord({ status: 'pending' })
+      const result = await service.requestMobileVerification('u1', '9876543210');
+
+      expect(result.devOtp).toBeUndefined();
+      expect(otps.replaceForUser).toHaveBeenCalledWith(
+        'u1',
+        '9876543210',
+        expect.any(String),
+        expect.any(Date)
       );
     });
+  });
 
-    it('rejects resubmission while already verified', async () => {
-      kyc.findByUserId.mockResolvedValue(buildRecord({ status: 'verified' }));
+  describe('confirmMobileOtp', () => {
+    it('marks the mobile number verified and consumes the OTP on a correct code', async () => {
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      const updated = buildRecord({ mobileVerified: true, mobileNumber: '9876543210' });
+      kyc.setMobileVerified.mockResolvedValue(updated);
 
-      await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
-      expect(kyc.upsertSubmission).not.toHaveBeenCalled();
+      await expect(service.confirmMobileOtp('u1', '123456')).resolves.toEqual(updated);
+
+      expect(kyc.setMobileVerified).toHaveBeenCalledWith('u1', '9876543210');
+      expect(otps.deleteForUser).toHaveBeenCalledWith('u1');
+      expect(otps.recordFailedAttempt).not.toHaveBeenCalled();
     });
 
-    it('rejects resubmission while already pending', async () => {
-      kyc.findByUserId.mockResolvedValue(buildRecord({ status: 'pending' }));
+    it('throws BadRequestError when there is no active OTP', async () => {
+      otps.findActiveForUser.mockResolvedValue(null);
 
-      await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
-      expect(kyc.upsertSubmission).not.toHaveBeenCalled();
+      await expect(service.confirmMobileOtp('u1', '123456')).rejects.toThrow(BadRequestError);
+      expect(kyc.setMobileVerified).not.toHaveBeenCalled();
     });
 
-    it('rejects when the Aadhaar number has not been verified', async () => {
+    it('records a failed attempt and throws on a wrong code, without deleting the OTP under the cap', async () => {
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      otps.recordFailedAttempt.mockResolvedValue(1);
+
+      await expect(service.confirmMobileOtp('u1', '000000')).rejects.toThrow(BadRequestError);
+
+      expect(otps.recordFailedAttempt).toHaveBeenCalledWith('507f1f77bcf86cd799439099');
+      expect(otps.deleteForUser).not.toHaveBeenCalled();
+      expect(kyc.setMobileVerified).not.toHaveBeenCalled();
+    });
+
+    it('deletes the OTP once the attempt cap is reached', async () => {
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      otps.recordFailedAttempt.mockResolvedValue(OTP_MAX_ATTEMPTS);
+
+      await expect(service.confirmMobileOtp('u1', '000000')).rejects.toThrow(BadRequestError);
+
+      expect(otps.deleteForUser).toHaveBeenCalledWith('u1');
+      expect(kyc.setMobileVerified).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyAadhaar', () => {
+    it('throws BadRequestError when the mobile number is not verified', async () => {
+      kyc.findByUserId.mockResolvedValue(buildRecord({ mobileVerified: false }));
+
+      await expect(service.verifyAadhaar('u1', '123456789012')).rejects.toThrow(BadRequestError);
+      expect(mobileVerificationProvider.lookupByMobileNumber).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestError when mobileVerified is true but mobileNumber is missing', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, mobileNumber: undefined })
+      );
+
+      await expect(service.verifyAadhaar('u1', '123456789012')).rejects.toThrow(BadRequestError);
+      expect(mobileVerificationProvider.lookupByMobileNumber).not.toHaveBeenCalled();
+    });
+
+    it('verifies successfully when the last 4 digits match the masked_aadhaar lookup', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, mobileNumber: '9876543210' })
+      );
+      mobileVerificationProvider.lookupByMobileNumber.mockResolvedValue(
+        buildLookup({ masked_aadhaar: 'XXXXXXXX9012' })
+      );
+      const updated = buildRecord({ aadhaarVerified: true, aadharNumber: '123456789012' });
+      kyc.setAadhaarVerified.mockResolvedValue(updated);
+
+      await expect(service.verifyAadhaar('u1', '123456789012')).resolves.toEqual(updated);
+
+      expect(mobileVerificationProvider.lookupByMobileNumber).toHaveBeenCalledWith('9876543210');
+      expect(kyc.setAadhaarVerified).toHaveBeenCalledWith('u1', '123456789012');
+    });
+
+    it('throws BadRequestError when the last 4 digits do not match the masked_aadhaar lookup', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, mobileNumber: '9876543210' })
+      );
+      mobileVerificationProvider.lookupByMobileNumber.mockResolvedValue(
+        buildLookup({ masked_aadhaar: 'XXXXXXXX0000' })
+      );
+
+      await expect(service.verifyAadhaar('u1', '123456789012')).rejects.toThrow(BadRequestError);
+      expect(kyc.setAadhaarVerified).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyPan', () => {
+    it('throws BadRequestError when the mobile number is not verified', async () => {
+      kyc.findByUserId.mockResolvedValue(buildRecord({ mobileVerified: false }));
+
+      await expect(service.verifyPan('u1', 'ABCDE1234F')).rejects.toThrow(BadRequestError);
+      expect(mobileVerificationProvider.lookupByMobileNumber).not.toHaveBeenCalled();
+    });
+
+    it('verifies successfully with a case-insensitive match against the pan_number lookup', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, mobileNumber: '9876543210' })
+      );
+      mobileVerificationProvider.lookupByMobileNumber.mockResolvedValue(
+        buildLookup({ pan_number: 'abcde1234f' })
+      );
+      const updated = buildRecord({ panVerified: true, panNumber: 'ABCDE1234F' });
+      kyc.setPanVerified.mockResolvedValue(updated);
+
+      await expect(service.verifyPan('u1', 'ABCDE1234F')).resolves.toEqual(updated);
+
+      expect(mobileVerificationProvider.lookupByMobileNumber).toHaveBeenCalledWith('9876543210');
+      expect(kyc.setPanVerified).toHaveBeenCalledWith('u1', 'ABCDE1234F');
+    });
+
+    it('throws BadRequestError when the PAN does not match the pan_number lookup', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, mobileNumber: '9876543210' })
+      );
+      mobileVerificationProvider.lookupByMobileNumber.mockResolvedValue(
+        buildLookup({ pan_number: 'ZZZZZ9999Z' })
+      );
+
+      await expect(service.verifyPan('u1', 'ABCDE1234F')).rejects.toThrow(BadRequestError);
+      expect(kyc.setPanVerified).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('submit', () => {
+    const buildInput = (): SubmitKycInput => ({ address: '221B Baker Street' });
+    const fullyVerified = (): KycRecord =>
+      buildRecord({ mobileVerified: true, aadhaarVerified: true, panVerified: true });
+
+    it('submits successfully once mobile/Aadhaar/PAN are all verified', async () => {
+      kyc.findByUserId.mockResolvedValue(fullyVerified());
+      const updated = buildRecord({ status: 'pending', ...fullyVerified() });
+      kyc.submit.mockResolvedValue(updated);
+
+      await expect(service.submit('u1', buildInput())).resolves.toEqual(updated);
+      expect(kyc.submit).toHaveBeenCalledWith('u1', buildInput());
+    });
+
+    it('rejects when already verified', async () => {
+      kyc.findByUserId.mockResolvedValue(fullyVerified());
+      kyc.findByUserId.mockResolvedValue(buildRecord({ ...fullyVerified(), status: 'verified' }));
+
+      await expect(service.submit('u1', buildInput())).rejects.toThrow(BadRequestError);
+      expect(kyc.submit).not.toHaveBeenCalled();
+    });
+
+    it('rejects when already pending', async () => {
+      kyc.findByUserId.mockResolvedValue(buildRecord({ ...fullyVerified(), status: 'pending' }));
+
+      await expect(service.submit('u1', buildInput())).rejects.toThrow(BadRequestError);
+      expect(kyc.submit).not.toHaveBeenCalled();
+    });
+
+    it('rejects with a mobile-specific message when the mobile number is not verified, checked before Aadhaar/PAN', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: false, aadhaarVerified: false, panVerified: false })
+      );
+
+      await expect(service.submit('u1', buildInput())).rejects.toThrow(
+        'Verify your mobile number before submitting'
+      );
+      expect(kyc.submit).not.toHaveBeenCalled();
+    });
+
+    it('rejects with an Aadhaar-specific message when Aadhaar is not verified but mobile is', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, aadhaarVerified: false, panVerified: false })
+      );
+
+      await expect(service.submit('u1', buildInput())).rejects.toThrow(
+        'Verify your Aadhaar number before submitting'
+      );
+      expect(kyc.submit).not.toHaveBeenCalled();
+    });
+
+    it('rejects with a PAN-specific message when PAN is not verified but mobile/Aadhaar are', async () => {
+      kyc.findByUserId.mockResolvedValue(
+        buildRecord({ mobileVerified: true, aadhaarVerified: true, panVerified: false })
+      );
+
+      await expect(service.submit('u1', buildInput())).rejects.toThrow(
+        'Verify your PAN before submitting'
+      );
+      expect(kyc.submit).not.toHaveBeenCalled();
+    });
+
+    it('treats no existing record the same as an unverified one (mobile message first)', async () => {
       kyc.findByUserId.mockResolvedValue(null);
-      verification.isAadharVerified.mockResolvedValue(false);
 
-      await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
-      expect(kyc.upsertSubmission).not.toHaveBeenCalled();
-    });
-
-    it('rejects when the PAN has not been verified', async () => {
-      kyc.findByUserId.mockResolvedValue(null);
-      verification.isPanVerified.mockResolvedValue(false);
-
-      await expect(service.submit('u1', buildSubmission())).rejects.toThrow(BadRequestError);
-      expect(kyc.upsertSubmission).not.toHaveBeenCalled();
+      await expect(service.submit('u1', buildInput())).rejects.toThrow(
+        'Verify your mobile number before submitting'
+      );
+      expect(kyc.submit).not.toHaveBeenCalled();
     });
   });
 
@@ -123,7 +346,7 @@ describe('KycService', () => {
       expect(kyc.findAllForReview).toHaveBeenCalledWith('pending');
     });
 
-    it('lists every status when no filter is given', async () => {
+    it('lists every reviewable status when no filter is given', async () => {
       kyc.findAllForReview.mockResolvedValue([]);
 
       await service.listForReview();
