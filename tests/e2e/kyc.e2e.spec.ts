@@ -29,9 +29,10 @@ const LOOKUP = {
   address: { full: '221B Baker Street' },
 };
 
-/** Valid KYC submission body — addressLine/city/state/pincode, all required. */
+/** Valid KYC submission body — addressLine/district/city/state/pincode, all required. */
 const VALID_SUBMISSION = {
   addressLine: '221B Baker Street',
+  district: 'Mumbai Suburban',
   city: 'Mumbai',
   state: 'Maharashtra',
   pincode: '400001',
@@ -443,6 +444,7 @@ describe('KYC API (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe('verified');
       expect(res.body.data.addressLine).toBe(VALID_SUBMISSION.addressLine);
+      expect(res.body.data.district).toBe(VALID_SUBMISSION.district);
       expect(res.body.data.city).toBe(VALID_SUBMISSION.city);
       expect(res.body.data.state).toBe(VALID_SUBMISSION.state);
       expect(res.body.data.pincode).toBe(VALID_SUBMISSION.pincode);
@@ -484,6 +486,18 @@ describe('KYC API (e2e)', () => {
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ ...VALID_SUBMISSION, addressLine: '' });
+
+      expect(res.status).toBe(422);
+    });
+
+    it('rejects a missing district with 422', async () => {
+      const accessToken = await registerAndLogin('user3a2@example.com');
+      await verifyEverything(accessToken);
+
+      const res = await request(app)
+        .post('/api/kyc/submit')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...VALID_SUBMISSION, district: '' });
 
       expect(res.status).toBe(422);
     });

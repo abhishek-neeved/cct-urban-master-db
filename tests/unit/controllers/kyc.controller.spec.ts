@@ -117,6 +117,7 @@ describe('KycController', () => {
       userId: 'u1',
       body: {
         addressLine: '221B Baker Street',
+        district: 'Mumbai Suburban',
         city: 'Mumbai',
         state: 'Maharashtra',
         pincode: '400001',

@@ -122,15 +122,13 @@ describe('Dashboard API (e2e)', () => {
   it('reflects real KYC and criminal-record state after admin review', async () => {
     const accessToken = await registerAndLogin('dash2@example.com');
     await verifyEverything(accessToken);
-    await request(app)
-      .post('/api/kyc/submit')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({
-        addressLine: '221B Baker Street',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        pincode: '400001',
-      });
+    await request(app).post('/api/kyc/submit').set('Authorization', `Bearer ${accessToken}`).send({
+      addressLine: '221B Baker Street',
+      district: 'Mumbai Suburban',
+      city: 'Mumbai',
+      state: 'Maharashtra',
+      pincode: '400001',
+    });
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
     const userId = me.body.data.user.id;
     await UserModel.updateOne({ email: 'dash2@example.com' }, { role: 'admin' });

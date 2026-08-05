@@ -32,6 +32,7 @@ export interface KycRow {
   panNumber: string | null;
   panVerified: boolean;
   addressLine: string | null;
+  district: string | null;
   city: string | null;
   state: string | null;
   pincode: string | null;
@@ -59,6 +60,7 @@ const kycSchema = new Schema(
     panNumber: { type: String, default: null },
     panVerified: { type: Boolean, required: true, default: false },
     addressLine: { type: String, default: null },
+    district: { type: String, default: null },
     city: { type: String, default: null },
     state: { type: String, default: null },
     pincode: { type: String, default: null },

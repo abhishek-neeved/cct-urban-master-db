@@ -146,6 +146,7 @@ const options: swaggerJSDoc.Options = {
             panNumber: { type: 'string', example: 'ABCDE1234F' },
             panVerified: { type: 'boolean' },
             addressLine: { type: 'string', example: '221B Baker Street' },
+            district: { type: 'string', example: 'Mumbai Suburban' },
             city: { type: 'string', example: 'Mumbai' },
             state: { type: 'string', example: 'Maharashtra' },
             pincode: { type: 'string', example: '400001' },
@@ -175,11 +176,12 @@ const options: swaggerJSDoc.Options = {
             'Mobile/Aadhaar/PAN must already be verified via /api/kyc/verify-mobile/*, /verify-aadhaar, and /verify-pan.',
           properties: {
             addressLine: { type: 'string', minLength: 1, example: '221B Baker Street' },
+            district: { type: 'string', minLength: 1, example: 'Mumbai Suburban' },
             city: { type: 'string', minLength: 1, example: 'Mumbai' },
             state: { type: 'string', minLength: 1, example: 'Maharashtra' },
             pincode: { type: 'string', pattern: '^\\d{6}$', example: '400001' },
           },
-          required: ['addressLine', 'city', 'state', 'pincode'],
+          required: ['addressLine', 'district', 'city', 'state', 'pincode'],
         },
         RequestMobileVerificationRequest: {
           type: 'object',

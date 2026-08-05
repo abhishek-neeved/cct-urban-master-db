@@ -7,6 +7,7 @@ import { connectTestDb, clearTestDb, closeTestDb } from '../../helpers/db';
 
 const buildSubmission = (): SubmitKycInput => ({
   addressLine: '221B Baker Street',
+  district: 'Mumbai Suburban',
   city: 'Mumbai',
   state: 'Maharashtra',
   pincode: '400001',
@@ -69,6 +70,7 @@ describe('KycRepository (integration)', () => {
         panNumber: undefined,
         panVerified: false,
         addressLine: undefined,
+        district: undefined,
         city: undefined,
         state: undefined,
         pincode: undefined,
@@ -204,6 +206,7 @@ describe('KycRepository (integration)', () => {
 
       expect(submitted.status).toBe('verified');
       expect(submitted.addressLine).toBe('221B Baker Street');
+      expect(submitted.district).toBe('Mumbai Suburban');
       expect(submitted.city).toBe('Mumbai');
       expect(submitted.state).toBe('Maharashtra');
       expect(submitted.pincode).toBe('400001');

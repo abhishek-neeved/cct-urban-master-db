@@ -102,6 +102,7 @@ describe('Service Providers directory API (e2e)', () => {
       .set('Authorization', `Bearer ${providerToken}`)
       .send({
         addressLine: '221B Baker Street',
+        district: 'Mumbai Suburban',
         city: 'Mumbai',
         state: 'Maharashtra',
         pincode: '400001',

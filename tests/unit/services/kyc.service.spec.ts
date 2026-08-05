@@ -312,6 +312,7 @@ describe('KycService', () => {
   describe('submit', () => {
     const buildInput = (): SubmitKycInput => ({
       addressLine: '221B Baker Street',
+      district: 'Mumbai Suburban',
       city: 'Mumbai',
       state: 'Maharashtra',
       pincode: '400001',

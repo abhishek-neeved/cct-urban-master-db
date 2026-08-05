@@ -569,7 +569,7 @@ third-party data by the verify steps above, this goes straight to
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
-**Body:** `addressLine` (required, non-empty), `city` (required, non-empty), `state` (required, non-empty), `pincode` (required, exactly 6 digits)
+**Body:** `addressLine` (required, non-empty), `district` (required, non-empty), `city` (required, non-empty), `state` (required, non-empty), `pincode` (required, exactly 6 digits)
 
 **200** → the updated record, `status: "verified"`
 
@@ -595,7 +595,7 @@ curl -X POST http://localhost:3000/api/kyc/verify-pan \
 # 3. Submit
 curl -X POST http://localhost:3000/api/kyc/submit \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
-  -d '{"addressLine":"221B Baker Street","city":"Mumbai","state":"Maharashtra","pincode":"400001"}'
+  -d '{"addressLine":"221B Baker Street","district":"Mumbai Suburban","city":"Mumbai","state":"Maharashtra","pincode":"400001"}'
 ```
 
 ### Admin review

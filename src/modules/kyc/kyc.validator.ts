@@ -26,6 +26,7 @@ export const verifyPanSchema = z.object({
 
 export const submitKycSchema = z.object({
   addressLine: z.string().min(1, 'Address is required'),
+  district: z.string().min(1, 'District is required'),
   city: z.string().min(1, 'City is required'),
   state: z.string().min(1, 'State is required'),
   pincode: z.string().regex(PINCODE_PATTERN, 'Pincode must be exactly 6 digits'),

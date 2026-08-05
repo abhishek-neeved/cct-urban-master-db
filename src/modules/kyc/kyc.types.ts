@@ -16,6 +16,7 @@ export interface KycRecord {
   panNumber?: string;
   panVerified: boolean;
   addressLine?: string;
+  district?: string;
   city?: string;
   state?: string;
   pincode?: string;
@@ -33,6 +34,7 @@ export interface AdminKycRecord extends KycRecord {
 
 export interface SubmitKycInput {
   addressLine: string;
+  district: string;
   city: string;
   state: string;
   pincode: string;
@@ -55,6 +57,7 @@ export const toKycRecord = (row: KycRow): KycRecord => ({
   panNumber: row.panNumber ?? undefined,
   panVerified: row.panVerified,
   addressLine: row.addressLine ?? undefined,
+  district: row.district ?? undefined,
   city: row.city ?? undefined,
   state: row.state ?? undefined,
   pincode: row.pincode ?? undefined,
