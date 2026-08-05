@@ -30,6 +30,9 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1097.0",
+    "@aws-sdk/s3-request-presigner": "3.1097.0",
+    "@casl/ability": "7.0.1",
     "bcryptjs": "3.0.3",
     "cookie-parser": "1.4.7",
     "cors": "2.8.6",
@@ -40,6 +43,7 @@
     "http-status-codes": "2.3.0",
     "jsonwebtoken": "9.0.3",
     "mongoose": "8.24.2",
+    "razorpay": "2.9.8",
     "swagger-jsdoc": "6.3.0",
     "swagger-ui-express": "5.0.1",
     "uuid": "14.0.1",

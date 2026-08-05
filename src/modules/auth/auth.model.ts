@@ -6,15 +6,26 @@ import { Schema, model, type Types } from 'mongoose';
  * only ever read through this module's repositories.
  */
 
+export type UserRole = 'admin' | 'service_provider' | 'customer';
+
+/**
+ * The service a `service_provider` offers. Set and changed any time from the
+ * profile page (see `users.service.ts#setServiceCategory`) — `null` until
+ * first set, and always `null` for `admin`/`customer`.
+ */
+export type ServiceCategory =
+  'electrician' | 'plumber' | 'cleaner' | 'carpenter' | 'painter' | 'other';
+
 export interface UserRow {
   _id: Types.ObjectId;
   firstName: string;
   lastName: string;
   email: string;
   password: string;
+  role: UserRole;
+  serviceCategory: ServiceCategory | null;
+  phoneNumber: string | null;
   isVerified: boolean;
-  passwordResetToken: string | null;
-  passwordResetExpires: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,9 +36,24 @@ const userSchema = new Schema(
     lastName: { type: String, required: true, trim: true, maxlength: 120 },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
+    // Every self-registered account is a service_provider (see
+    // auth.service.ts#register) — admins are promoted directly in the
+    // database, never self-registered; customer accounts aren't created via
+    // self-registration today either.
+    role: { type: String, enum: ['admin', 'service_provider', 'customer'], required: true },
+    // Set/changed any time by a service_provider from the profile page (see
+    // users.routes.ts). Stays null for admin/customer and for a
+    // service_provider who hasn't picked one yet.
+    serviceCategory: {
+      type: String,
+      enum: ['electrician', 'plumber', 'cleaner', 'carpenter', 'painter', 'other'],
+      default: null,
+    },
+    // Optional for every role — editable any time via PATCH /users/me, not
+    // part of the one-time onboarding step. Populated so a customer can
+    // reach a listed service_provider.
+    phoneNumber: { type: String, default: null, trim: true },
     isVerified: { type: Boolean, required: true, default: false },
-    passwordResetToken: { type: String, default: null },
-    passwordResetExpires: { type: Date, default: null },
   },
   { timestamps: true }
 );

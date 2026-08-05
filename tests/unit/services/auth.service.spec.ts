@@ -16,6 +16,9 @@ const buildUser = (overrides: Partial<User> = {}): User => ({
   firstName: 'Ada',
   lastName: 'Lovelace',
   email: 'ada@example.com',
+  role: 'customer',
+  serviceCategory: null,
+  phoneNumber: null,
   isVerified: true,
   createdAt: new Date('2020-01-01'),
   updatedAt: new Date('2020-01-01'),
@@ -41,13 +44,15 @@ describe('AuthService', () => {
   beforeEach(() => {
     users = {
       findById: vi.fn(),
+      findByIdWithPassword: vi.fn(),
       findByEmail: vi.fn(),
       findByEmailWithPassword: vi.fn(),
       create: vi.fn(),
-      setPasswordResetToken: vi.fn(),
-      findByValidResetToken: vi.fn(),
       updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
+      setServiceCategory: vi.fn(),
       markVerified: vi.fn(),
+      findServiceProviders: vi.fn(),
     };
     refreshTokens = {
       create: vi.fn(),
@@ -72,8 +77,8 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('creates a user with a hashed password, issues an OTP, and does not issue tokens', async () => {
-      const user = buildUser({ isVerified: false });
+    it('creates a service_provider with a hashed password, issues an OTP, and does not issue tokens', async () => {
+      const user = buildUser({ isVerified: false, role: 'service_provider' });
       users.findByEmail.mockResolvedValue(null);
       users.create.mockResolvedValue(user);
 
@@ -88,14 +93,21 @@ describe('AuthService', () => {
       // Password passed to the repository must be hashed, not plaintext.
       const created = users.create.mock.calls[0][0];
       expect(created.password).not.toBe('supersecret');
+      expect(created.role).toBe('service_provider');
       // An OTP is issued (hashed) and emailed, but the caller is not logged in.
       expect(otps.replaceForUser).toHaveBeenCalledTimes(1);
+      expect(otps.replaceForUser).toHaveBeenCalledWith(
+        user.id,
+        'REGISTER',
+        expect.any(String),
+        expect.any(Date)
+      );
       expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
       expect(refreshTokens.create).not.toHaveBeenCalled();
       // Outside production the raw OTP is returned for local testing.
       expect(result.devOtp).toMatch(/^\d{6}$/);
       // The stored code is hashed, not the raw OTP that was emailed.
-      const [, storedHash] = otps.replaceForUser.mock.calls[0];
+      const [, , storedHash] = otps.replaceForUser.mock.calls[0];
       expect(storedHash).toBe(hashToken(result.devOtp as string));
       expect(storedHash).not.toBe(result.devOtp);
     });
@@ -123,8 +135,9 @@ describe('AuthService', () => {
 
       await service.verifyOtp(user.email, '123456');
 
+      expect(otps.findActiveForUser).toHaveBeenCalledWith(user.id, 'REGISTER');
       expect(users.markVerified).toHaveBeenCalledWith(user.id);
-      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id);
+      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id, 'REGISTER');
       expect(otps.recordFailedAttempt).not.toHaveBeenCalled();
     });
 
@@ -148,7 +161,7 @@ describe('AuthService', () => {
       otps.recordFailedAttempt.mockResolvedValue(OTP_MAX_ATTEMPTS);
 
       await expect(service.verifyOtp(user.email, '000000')).rejects.toBeInstanceOf(BadRequestError);
-      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id);
+      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id, 'REGISTER');
     });
 
     it('rejects generically when there is no active OTP', async () => {
@@ -184,6 +197,7 @@ describe('AuthService', () => {
 
       const code = await service.resendOtp(user.email);
 
+      expect(otps.findActiveForUser).toHaveBeenCalledWith(user.id, 'REGISTER');
       expect(otps.replaceForUser).toHaveBeenCalledTimes(1);
       expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
       expect(code).toMatch(/^\d{6}$/);
@@ -247,6 +261,7 @@ describe('AuthService', () => {
       expect(result.tokens.accessToken).toEqual(expect.any(String));
       expect(result.user).not.toHaveProperty('password');
       expect(result.user.email).toBe(record.email);
+      expect(result.user.role).toBe(record.role);
       // A clean login clears any prior failed-attempt count for this email.
       expect(loginAttempts.reset).toHaveBeenCalledWith(record.email);
     });
@@ -381,55 +396,91 @@ describe('AuthService', () => {
   });
 
   describe('forgotPassword', () => {
-    it('stores a reset token and sends an email when the user exists', async () => {
-      users.findByEmail.mockResolvedValue(buildUser());
+    it('issues a RESET OTP and emails it when the user exists', async () => {
+      const user = buildUser();
+      users.findByEmail.mockResolvedValue(user);
 
-      const token = await service.forgotPassword('jane.doe@example.com');
+      const otp = await service.forgotPassword('jane.doe@example.com');
 
-      expect(users.setPasswordResetToken).toHaveBeenCalledTimes(1);
-      expect(email.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
-      expect(token).toEqual(expect.any(String)); // dev token returned outside prod
+      expect(otps.replaceForUser).toHaveBeenCalledWith(
+        user.id,
+        'RESET',
+        expect.any(String),
+        expect.any(Date)
+      );
+      expect(email.sendOtpEmail).toHaveBeenCalledTimes(1);
+      expect(otp).toMatch(/^\d{6}$/); // dev OTP returned outside prod
     });
 
     it('does nothing and reveals nothing when the user is unknown', async () => {
       users.findByEmail.mockResolvedValue(null);
 
-      const token = await service.forgotPassword('nobody@example.com');
+      const otp = await service.forgotPassword('nobody@example.com');
 
-      expect(token).toBeUndefined();
-      expect(users.setPasswordResetToken).not.toHaveBeenCalled();
-      expect(email.sendPasswordResetEmail).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('verifyResetToken', () => {
-    it('is true for a valid token and false otherwise', async () => {
-      users.findByValidResetToken.mockResolvedValueOnce(buildUser());
-      await expect(service.verifyResetToken('good')).resolves.toBe(true);
-
-      users.findByValidResetToken.mockResolvedValueOnce(null);
-      await expect(service.verifyResetToken('bad')).resolves.toBe(false);
+      expect(otp).toBeUndefined();
+      expect(otps.replaceForUser).not.toHaveBeenCalled();
+      expect(email.sendOtpEmail).not.toHaveBeenCalled();
     });
   });
 
   describe('resetPassword', () => {
-    it('updates the password and revokes all sessions on a valid token', async () => {
+    it('updates the password and revokes all sessions on a correct OTP', async () => {
       const user = buildUser();
-      users.findByValidResetToken.mockResolvedValue(user);
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
 
-      await service.resetPassword('good-token', 'brand-new-password');
+      await service.resetPassword(user.email, '123456', 'brand-new-password');
 
+      expect(otps.findActiveForUser).toHaveBeenCalledWith(user.id, 'RESET');
+      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id, 'RESET');
       expect(users.updatePassword).toHaveBeenCalledTimes(1);
       expect(loginAttempts.reset).toHaveBeenCalledWith(user.email);
       expect(refreshTokens.deleteAllForUser).toHaveBeenCalledWith(user.id);
     });
 
-    it('throws BadRequestError on an invalid/expired token', async () => {
-      users.findByValidResetToken.mockResolvedValue(null);
-      await expect(service.resetPassword('bad-token', 'brand-new-password')).rejects.toBeInstanceOf(
-        BadRequestError
-      );
+    it('rejects generically for an unknown email (no enumeration)', async () => {
+      users.findByEmail.mockResolvedValue(null);
+      await expect(
+        service.resetPassword('nobody@example.com', '123456', 'brand-new-password')
+      ).rejects.toBeInstanceOf(BadRequestError);
       expect(users.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('rejects generically when there is no active RESET OTP', async () => {
+      const user = buildUser();
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword(user.email, '123456', 'brand-new-password')
+      ).rejects.toBeInstanceOf(BadRequestError);
+      expect(users.updatePassword).not.toHaveBeenCalled();
+    });
+
+    it('records a failed attempt and rejects a wrong code', async () => {
+      const user = buildUser();
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      otps.recordFailedAttempt.mockResolvedValue(1);
+
+      await expect(
+        service.resetPassword(user.email, '000000', 'brand-new-password')
+      ).rejects.toBeInstanceOf(BadRequestError);
+      expect(otps.recordFailedAttempt).toHaveBeenCalledTimes(1);
+      expect(users.updatePassword).not.toHaveBeenCalled();
+      expect(otps.deleteForUser).not.toHaveBeenCalled();
+    });
+
+    it('burns the OTP once the attempt cap is reached', async () => {
+      const user = buildUser();
+      users.findByEmail.mockResolvedValue(user);
+      otps.findActiveForUser.mockResolvedValue(buildOtp('123456'));
+      otps.recordFailedAttempt.mockResolvedValue(OTP_MAX_ATTEMPTS);
+
+      await expect(
+        service.resetPassword(user.email, '000000', 'brand-new-password')
+      ).rejects.toBeInstanceOf(BadRequestError);
+      expect(otps.deleteForUser).toHaveBeenCalledWith(user.id, 'RESET');
     });
   });
 
@@ -452,6 +503,44 @@ describe('AuthService', () => {
       await expect(service.getProfile('507f1f77bcf86cd799439011')).rejects.toBeInstanceOf(
         UnauthorizedError
       );
+    });
+  });
+
+  describe('changePassword', () => {
+    const currentPassword = 'supersecret';
+    let record: UserWithPassword;
+
+    beforeEach(async () => {
+      record = { ...buildUser(), password: await hashPassword(currentPassword) };
+    });
+
+    it('verifies the current password, sets the new one, and revokes all sessions', async () => {
+      users.findByIdWithPassword.mockResolvedValue(record);
+
+      await service.changePassword(record.id, currentPassword, 'brand-new-password');
+
+      expect(users.updatePassword).toHaveBeenCalledWith(record.id, expect.any(String));
+      const [, newHash] = users.updatePassword.mock.calls[0];
+      expect(newHash).not.toBe(record.password);
+      expect(refreshTokens.deleteAllForUser).toHaveBeenCalledWith(record.id);
+    });
+
+    it('throws BadRequestError when the current password is wrong', async () => {
+      users.findByIdWithPassword.mockResolvedValue(record);
+
+      await expect(
+        service.changePassword(record.id, 'wrong-password', 'brand-new-password')
+      ).rejects.toBeInstanceOf(BadRequestError);
+      expect(users.updatePassword).not.toHaveBeenCalled();
+      expect(refreshTokens.deleteAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('throws UnauthorizedError when the account no longer exists', async () => {
+      users.findByIdWithPassword.mockResolvedValue(null);
+
+      await expect(
+        service.changePassword('missing', currentPassword, 'brand-new-password')
+      ).rejects.toBeInstanceOf(UnauthorizedError);
     });
   });
 });

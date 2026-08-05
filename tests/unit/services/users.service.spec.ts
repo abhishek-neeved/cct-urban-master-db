@@ -1,0 +1,139 @@
+import { vi, type Mocked } from 'vitest';
+import { UsersService } from '@modules/users/users.service';
+import type { IUserRepository } from '@modules/auth/user.repository';
+import type { User } from '@modules/auth/user.types';
+import { ForbiddenError, NotFoundError } from '@utils/errors';
+
+const buildUser = (overrides: Partial<User> = {}): User => ({
+  id: '00000000-0000-4000-8000-000000000000',
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  email: 'ada@example.com',
+  role: 'customer',
+  serviceCategory: null,
+  phoneNumber: null,
+  isVerified: true,
+  createdAt: new Date('2020-01-01'),
+  updatedAt: new Date('2020-01-01'),
+  ...overrides,
+});
+
+describe('UsersService', () => {
+  let users: Mocked<IUserRepository>;
+  let service: UsersService;
+
+  beforeEach(() => {
+    users = {
+      findById: vi.fn(),
+      findByEmail: vi.fn(),
+      findByEmailWithPassword: vi.fn(),
+      create: vi.fn(),
+      updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
+      setServiceCategory: vi.fn(),
+      markVerified: vi.fn(),
+      findServiceProviders: vi.fn(),
+    };
+    service = new UsersService(users);
+  });
+
+  describe('getProfile', () => {
+    it('returns the user when found', async () => {
+      const user = buildUser();
+      users.findById.mockResolvedValue(user);
+
+      await expect(service.getProfile(user.id)).resolves.toEqual(user);
+    });
+
+    it('throws NotFoundError when the user no longer exists', async () => {
+      users.findById.mockResolvedValue(null);
+
+      await expect(service.getProfile('missing')).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('updateProfile', () => {
+    it('updates and returns the profile', async () => {
+      const updated = buildUser({ firstName: 'Grace' });
+      users.updateProfile.mockResolvedValue(updated);
+
+      const result = await service.updateProfile(updated.id, { firstName: 'Grace' });
+
+      expect(users.updateProfile).toHaveBeenCalledWith(updated.id, { firstName: 'Grace' });
+      expect(result).toEqual(updated);
+    });
+
+    it('throws NotFoundError when the user no longer exists', async () => {
+      users.updateProfile.mockResolvedValue(null);
+
+      await expect(service.updateProfile('missing', { firstName: 'Grace' })).rejects.toThrow(
+        NotFoundError
+      );
+    });
+
+    it('updates the phone number', async () => {
+      const updated = buildUser({ phoneNumber: '+919876543210' });
+      users.updateProfile.mockResolvedValue(updated);
+
+      const result = await service.updateProfile(updated.id, { phoneNumber: '+919876543210' });
+
+      expect(users.updateProfile).toHaveBeenCalledWith(updated.id, {
+        phoneNumber: '+919876543210',
+      });
+      expect(result).toEqual(updated);
+    });
+  });
+
+  describe('setServiceCategory', () => {
+    it('sets the category for a service provider who has not set one yet', async () => {
+      const provider = buildUser({ role: 'service_provider', serviceCategory: null });
+      const updated = { ...provider, serviceCategory: 'plumber' as const };
+      users.findById.mockResolvedValue(provider);
+      users.setServiceCategory.mockResolvedValue(updated);
+
+      const result = await service.setServiceCategory(provider.id, 'plumber');
+
+      expect(users.setServiceCategory).toHaveBeenCalledWith(provider.id, 'plumber');
+      expect(result).toEqual(updated);
+    });
+
+    it('throws NotFoundError when the user no longer exists', async () => {
+      users.findById.mockResolvedValue(null);
+
+      await expect(service.setServiceCategory('missing', 'plumber')).rejects.toThrow(NotFoundError);
+    });
+
+    it('throws ForbiddenError for a customer', async () => {
+      users.findById.mockResolvedValue(buildUser({ role: 'customer' }));
+
+      await expect(service.setServiceCategory('u1', 'plumber')).rejects.toThrow(ForbiddenError);
+    });
+
+    it('throws ForbiddenError for an admin', async () => {
+      users.findById.mockResolvedValue(buildUser({ role: 'admin' }));
+
+      await expect(service.setServiceCategory('u1', 'plumber')).rejects.toThrow(ForbiddenError);
+    });
+
+    it('changes an already-set category — editable any time, not one-time', async () => {
+      const provider = buildUser({ role: 'service_provider', serviceCategory: 'electrician' });
+      const updated = { ...provider, serviceCategory: 'plumber' as const };
+      users.findById.mockResolvedValue(provider);
+      users.setServiceCategory.mockResolvedValue(updated);
+
+      const result = await service.setServiceCategory('u1', 'plumber');
+
+      expect(users.setServiceCategory).toHaveBeenCalledWith('u1', 'plumber');
+      expect(result).toEqual(updated);
+    });
+
+    it('throws NotFoundError if the update races with a deletion', async () => {
+      users.findById.mockResolvedValue(
+        buildUser({ role: 'service_provider', serviceCategory: null })
+      );
+      users.setServiceCategory.mockResolvedValue(null);
+
+      await expect(service.setServiceCategory('u1', 'plumber')).rejects.toThrow(NotFoundError);
+    });
+  });
+});

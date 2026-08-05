@@ -28,6 +28,7 @@ describe('RefreshTokenRepository (integration)', () => {
       lastName: 'Lovelace',
       email: 'ada@example.com',
       password: 'hashed-pw',
+      role: 'customer',
     });
     userId = user.id;
   });

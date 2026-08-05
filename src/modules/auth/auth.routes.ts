@@ -10,6 +10,7 @@ import { validate } from '@middleware/validate';
 import { requireAuth } from '@middleware/require-auth';
 import { authLimiter } from '@middleware/rate-limit';
 import {
+  changePasswordSchema,
   forgotPasswordSchema,
   loginSchema,
   refreshTokenSchema,
@@ -17,7 +18,6 @@ import {
   resendOtpSchema,
   resetPasswordSchema,
   verifyOtpSchema,
-  verifyResetTokenQuerySchema,
 } from './auth.validator';
 
 /**
@@ -151,14 +151,14 @@ export const createAuthModule = (): Router => {
    * /api/auth/forgot-password:
    *   post:
    *     tags: [Auth]
-   *     summary: Request a password-reset link (always 200 — no account enumeration)
+   *     summary: Request a password-reset OTP (always 200 — no account enumeration)
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
    *     responses:
-   *       200: { description: Reset link sent if the account exists }
+   *       200: { description: A verification code has been sent if the account exists }
    *       429: { description: Too many requests }
    */
   router.post(
@@ -173,7 +173,11 @@ export const createAuthModule = (): Router => {
    * /api/auth/reset-password:
    *   post:
    *     tags: [Auth]
-   *     summary: Set a new password using a valid reset token
+   *     summary: Set a new password using the emailed OTP
+   *     description: >
+   *       One-shot — the OTP itself is the proof of mailbox ownership and the
+   *       authorization to set the new password; there is no separate
+   *       verify-then-reset step.
    *     requestBody:
    *       required: true
    *       content:
@@ -181,8 +185,9 @@ export const createAuthModule = (): Router => {
    *           schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
    *     responses:
    *       200: { description: Password has been reset }
-   *       400: { description: Invalid or expired reset token }
+   *       400: { description: Invalid or expired verification code }
    *       422: { description: Validation failed }
+   *       429: { description: Too many requests }
    */
   router.post(
     '/reset-password',
@@ -237,33 +242,6 @@ export const createAuthModule = (): Router => {
 
   /**
    * @openapi
-   * /api/auth/verify-forgot-password-token:
-   *   get:
-   *     tags: [Auth]
-   *     summary: Check whether a password-reset token is valid
-   *     parameters:
-   *       - in: query
-   *         name: token
-   *         required: true
-   *         schema: { type: string, minLength: 1 }
-   *     responses:
-   *       200:
-   *         description: OK
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 valid: { type: boolean }
-   */
-  router.get(
-    '/verify-forgot-password-token',
-    validate({ query: verifyResetTokenQuerySchema }),
-    controller.verifyForgotPasswordToken
-  );
-
-  /**
-   * @openapi
    * /api/auth/me:
    *   get:
    *     tags: [Auth]
@@ -284,6 +262,40 @@ export const createAuthModule = (): Router => {
    */
   // Protected: requires a valid access token.
   router.get('/me', requireAuth, controller.me);
+
+  /**
+   * @openapi
+   * /api/auth/change-password:
+   *   patch:
+   *     tags: [Auth]
+   *     summary: Change the authenticated user's password
+   *     description: >
+   *       Verifies `currentPassword` server-side before setting the new one —
+   *       unlike reset-password, which trusts a mailed OTP instead for a
+   *       caller who can't log in at all. Forces re-login on every other
+   *       session afterwards, same as a reset.
+   *     security:
+   *       - bearerAuth: []
+   *       - cookieAuth: []
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+   *     responses:
+   *       200: { description: Password changed }
+   *       400: { description: Current password is incorrect }
+   *       401: { description: Missing/invalid access token }
+   *       422: { description: Validation failed }
+   *       429: { description: Too many requests }
+   */
+  router.patch(
+    '/change-password',
+    requireAuth,
+    authLimiter,
+    validate({ body: changePasswordSchema }),
+    controller.changePassword
+  );
 
   return router;
 };

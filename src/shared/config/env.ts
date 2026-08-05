@@ -3,6 +3,10 @@ import { z } from 'zod';
 import {
   BCRYPT_SALT_ROUNDS,
   DEFAULT_ACCESS_SECRET,
+  DEFAULT_MOBILE_VERIFICATION_API_KEY,
+  DEFAULT_RAZORPAY_KEY_ID,
+  DEFAULT_RAZORPAY_KEY_SECRET,
+  DEFAULT_RAZORPAY_WEBHOOK_SECRET,
   ENV_DEFAULTS,
   LOG_FORMATS,
   LOG_LEVELS,
@@ -25,7 +29,7 @@ const envSchema = z
     LOG_FORMAT: z.enum(LOG_FORMATS).optional(),
     DATABASE_URL: z.string().min(1).default(ENV_DEFAULTS.DATABASE_URL),
 
-    // Base URL used to build links in emails (e.g. the password-reset link).
+    // This API's own base URL (used in Swagger's server list).
     APP_URL: z.string().url().default(ENV_DEFAULTS.APP_URL),
 
     // Auth — a strong JWT_ACCESS_SECRET is REQUIRED in production (see refine below).
@@ -42,13 +46,7 @@ const envSchema = z
       .min(BCRYPT_SALT_ROUNDS.min)
       .max(BCRYPT_SALT_ROUNDS.max)
       .default(BCRYPT_SALT_ROUNDS.default),
-    PASSWORD_RESET_TTL_MINUTES: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(ENV_DEFAULTS.PASSWORD_RESET_TTL_MINUTES),
-
-    // How long an account-verification OTP stays valid.
+    // How long an account-verification or password-reset OTP stays valid.
     OTP_TTL_MINUTES: z.coerce.number().int().positive().default(ENV_DEFAULTS.OTP_TTL_MINUTES),
     // Minimum wait between OTP resends (blunts email spamming / brute-force setup).
     OTP_RESEND_COOLDOWN_SECONDS: z.coerce
@@ -65,6 +63,39 @@ const envSchema = z
 
     // Comma-separated list of allowed CORS origins (leave empty to allow all in dev).
     CORS_ORIGINS: z.string().optional(),
+
+    // Object storage (S3-compatible) for uploaded files (see @modules/uploads).
+    S3_BUCKET: z.string().min(1).default('cdma-uploads-dev'),
+    S3_REGION: z.string().min(1).default('us-east-1'),
+    // Custom endpoint for a non-AWS S3-compatible provider or a local MinIO
+    // instance in dev; leave unset to use AWS's default endpoint resolution.
+    S3_ENDPOINT: z.string().url().optional(),
+    // Required when S3_ENDPOINT is set (MinIO has no ambient AWS credentials to
+    // fall back to); optional against real AWS, where the SDK's default
+    // provider chain (IAM role, shared config, etc.) can supply them instead.
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    // MinIO (and most non-AWS S3-compatible services) require path-style
+    // addressing (`endpoint/bucket/key`); AWS itself defaults to virtual-hosted
+    // style (`bucket.endpoint/key`) and only needs this when using an endpoint
+    // override that doesn't support it.
+    S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
+
+    // Razorpay (see @modules/onboarding-fee). Test-mode keys (rzp_test_...)
+    // work against the same API in dev — there's no separate sandbox host.
+    RAZORPAY_KEY_ID: z.string().min(1).default(DEFAULT_RAZORPAY_KEY_ID),
+    RAZORPAY_KEY_SECRET: z.string().min(1).default(DEFAULT_RAZORPAY_KEY_SECRET),
+    // Shared secret configured on the webhook endpoint in the Razorpay
+    // dashboard; used to verify `X-Razorpay-Signature` on incoming webhooks.
+    RAZORPAY_WEBHOOK_SECRET: z.string().min(1).default(DEFAULT_RAZORPAY_WEBHOOK_SECRET),
+
+    // CoinCircleTrust API-product platform (see @modules/kyc's mobile
+    // verification) — a real, billed third-party lookup, not a mock.
+    MOBILE_VERIFICATION_API_URL: z
+      .string()
+      .url()
+      .default('https://apis.coincircletrust.com/api/v1/apiProduct/mobile-to-pan'),
+    MOBILE_VERIFICATION_API_KEY: z.string().min(1).default(DEFAULT_MOBILE_VERIFICATION_API_KEY),
   })
   .superRefine((val, ctx) => {
     // Never boot production with the shared dev secret or a weak one.
@@ -88,6 +119,39 @@ const envSchema = z
         path: ['CORS_ORIGINS'],
         message: 'CORS_ORIGINS must list at least one allowed origin in production',
       });
+    }
+
+    // A custom endpoint (MinIO, or any non-AWS S3-compatible service) has no
+    // ambient credentials to fall back to, unlike real AWS (IAM role, shared
+    // config, etc. via the SDK's default provider chain) — so static keys are
+    // required whenever one is set.
+    if (val.S3_ENDPOINT && (!val.S3_ACCESS_KEY_ID || !val.S3_SECRET_ACCESS_KEY)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['S3_ACCESS_KEY_ID'],
+        message: 'S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are required when S3_ENDPOINT is set',
+      });
+    }
+
+    // Never boot production still pointed at placeholder Razorpay config — a
+    // real key/secret/webhook-secret must be set, same guard shape as
+    // JWT_ACCESS_SECRET above.
+    const productionRequiredDefaults: Array<[keyof typeof val, string]> = [
+      ['RAZORPAY_KEY_ID', DEFAULT_RAZORPAY_KEY_ID],
+      ['RAZORPAY_KEY_SECRET', DEFAULT_RAZORPAY_KEY_SECRET],
+      ['RAZORPAY_WEBHOOK_SECRET', DEFAULT_RAZORPAY_WEBHOOK_SECRET],
+      ['MOBILE_VERIFICATION_API_KEY', DEFAULT_MOBILE_VERIFICATION_API_KEY],
+    ];
+    if (val.NODE_ENV === 'production') {
+      for (const [key, placeholder] of productionRequiredDefaults) {
+        if (val[key] === placeholder) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} must be set to a real value in production`,
+          });
+        }
+      }
     }
   });
 

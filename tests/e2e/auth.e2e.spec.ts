@@ -44,12 +44,13 @@ describe('Auth API (e2e)', () => {
     return otp;
   };
 
-  it('registers a new user unverified, without issuing tokens, and emails an OTP', async () => {
+  it('registers a new user unverified as a service_provider, without issuing tokens, and emails an OTP', async () => {
     const res = await register();
 
     expect(res.status).toBe(201);
     expect(res.body.data.user.email).toBe(credentials.email);
     expect(res.body.data.user.isVerified).toBe(false);
+    expect(res.body.data.user.role).toBe('service_provider');
     expect(res.body.data.user).not.toHaveProperty('password');
     expect(res.body.data).not.toHaveProperty('accessToken');
     expect(res.body.data).not.toHaveProperty('refreshToken');
@@ -245,31 +246,24 @@ describe('Auth API (e2e)', () => {
     expect(reused.status).toBe(401);
   });
 
-  it('runs the full forgot → verify → reset → login flow', async () => {
+  it('runs the full forgot → reset (via OTP) → login flow', async () => {
     await registerAndVerify();
 
-    // 1. Request a reset. In non-production the raw token comes back for testing.
+    // 1. Request a reset. In non-production the raw OTP comes back for testing.
     const forgot = await request(app)
       .post('/api/auth/forgot-password')
       .send({ email: credentials.email });
     expect(forgot.status).toBe(200);
-    const token = forgot.body.data.resetToken as string;
-    expect(token).toEqual(expect.any(String));
+    const otp = forgot.body.data.otpDevCode as string;
+    expect(otp).toMatch(/^\d{6}$/);
 
-    // 2. Verify the token is valid.
-    const verify = await request(app)
-      .get('/api/auth/verify-forgot-password-token')
-      .query({ token });
-    expect(verify.status).toBe(200);
-    expect(verify.body.data.valid).toBe(true);
-
-    // 3. Reset the password.
+    // 2. Reset the password with the OTP — one-shot, no separate verify step.
     const reset = await request(app)
       .post('/api/auth/reset-password')
-      .send({ token, password: 'a-new-password' });
+      .send({ email: credentials.email, otp, password: 'a-new-password' });
     expect(reset.status).toBe(200);
 
-    // 4. Old password no longer works; new one does.
+    // 3. Old password no longer works; new one does.
     const oldLogin = await request(app)
       .post('/api/auth/login')
       .send({ email: credentials.email, password: credentials.password });
@@ -280,9 +274,27 @@ describe('Auth API (e2e)', () => {
       .send({ email: credentials.email, password: 'a-new-password' });
     expect(newLogin.status).toBe(200);
 
-    // 5. The reset token is single-use.
-    const reuse = await request(app).get('/api/auth/verify-forgot-password-token').query({ token });
-    expect(reuse.body.data.valid).toBe(false);
+    // 4. The OTP is single-use — replaying it fails.
+    const reuse = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ email: credentials.email, otp, password: 'yet-another-password' });
+    expect(reuse.status).toBe(400);
+  });
+
+  it('rejects a wrong reset OTP and locks it out after too many attempts', async () => {
+    await registerAndVerify();
+    await request(app).post('/api/auth/forgot-password').send({ email: credentials.email });
+
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app)
+        .post('/api/auth/reset-password')
+        .send({ email: credentials.email, otp: '000000', password: 'a-new-password' });
+      expect(res.status).toBe(400);
+    }
+
+    // Even the correct password still works — the reset never happened.
+    const stillWorks = await login();
+    expect(stillWorks.status).toBe(200);
   });
 
   it('does not reveal whether an email exists on forgot-password', async () => {
@@ -290,6 +302,80 @@ describe('Auth API (e2e)', () => {
       .post('/api/auth/forgot-password')
       .send({ email: 'nobody@example.com' });
     expect(res.status).toBe(200);
-    expect(res.body.data.resetToken).toBeUndefined();
+    expect(res.body.data.otpDevCode).toBeUndefined();
+  });
+
+  it('rejects reset-password generically for an unknown email (no enumeration)', async () => {
+    const res = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ email: 'nobody@example.com', otp: '123456', password: 'a-new-password' });
+    expect(res.status).toBe(400);
+  });
+
+  describe('PATCH /api/auth/change-password', () => {
+    const changePassword = (accessToken: string, body: Record<string, unknown>) =>
+      request(app)
+        .patch('/api/auth/change-password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(body);
+
+    it('changes the password when the current one is correct, and revokes other sessions', async () => {
+      await registerAndVerify();
+      const loginRes = await login();
+      const accessToken = loginRes.body.data.accessToken as string;
+      const refreshToken = loginRes.body.data.refreshToken as string;
+
+      const res = await changePassword(accessToken, {
+        currentPassword: credentials.password,
+        newPassword: 'a-new-password',
+      });
+      expect(res.status).toBe(200);
+
+      // Old password no longer works; new one does.
+      const oldLogin = await login();
+      expect(oldLogin.status).toBe(401);
+      const newLogin = await request(app)
+        .post('/api/auth/login')
+        .send({ email: credentials.email, password: 'a-new-password' });
+      expect(newLogin.status).toBe(200);
+
+      // The refresh token from before the change was revoked.
+      const refreshAttempt = await request(app).post('/api/auth/refresh').send({ refreshToken });
+      expect(refreshAttempt.status).toBe(401);
+    });
+
+    it('rejects the wrong current password with 400, and leaves the password unchanged', async () => {
+      await registerAndVerify();
+      const loginRes = await login();
+      const accessToken = loginRes.body.data.accessToken as string;
+
+      const res = await changePassword(accessToken, {
+        currentPassword: 'not-the-real-password',
+        newPassword: 'a-new-password',
+      });
+      expect(res.status).toBe(400);
+
+      const stillWorks = await login();
+      expect(stillWorks.status).toBe(200);
+    });
+
+    it('rejects without a valid access token', async () => {
+      await request(app)
+        .patch('/api/auth/change-password')
+        .send({ currentPassword: 'x', newPassword: 'a-new-password' })
+        .expect(401);
+    });
+
+    it('rejects a new password shorter than 8 characters with 422', async () => {
+      await registerAndVerify();
+      const loginRes = await login();
+      const accessToken = loginRes.body.data.accessToken as string;
+
+      const res = await changePassword(accessToken, {
+        currentPassword: credentials.password,
+        newPassword: 'short',
+      });
+      expect(res.status).toBe(422);
+    });
   });
 });

@@ -73,22 +73,26 @@ export class AuthController {
   });
 
   forgotPassword: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const devToken = await this.authService.forgotPassword(req.body.email);
+    const devOtp = await this.authService.forgotPassword(req.body.email);
     const data: Record<string, unknown> = {
-      message: 'If an account with that email exists, a reset link has been sent',
+      message: 'If an account with that email exists, a verification code has been sent',
     };
     // Dev-only convenience so the flow can be exercised without a mail server.
-    if (devToken) data.resetToken = devToken;
+    if (devOtp) data.otpDevCode = devOtp;
     res.status(StatusCodes.OK).json(success(data, req.id));
   });
 
-  verifyForgotPasswordToken: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    const valid = await this.authService.verifyResetToken(String(req.query.token));
-    res.status(StatusCodes.OK).json(success({ valid }, req.id));
+  resetPassword: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    await this.authService.resetPassword(req.body.email, req.body.otp, req.body.password);
+    res.status(StatusCodes.OK).json(success({ message: 'Password has been reset' }, req.id));
   });
 
-  resetPassword: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
-    await this.authService.resetPassword(req.body.token, req.body.password);
-    res.status(StatusCodes.OK).json(success({ message: 'Password has been reset' }, req.id));
+  changePassword: RequestHandler = asyncHandler(async (req: Request, res: Response) => {
+    await this.authService.changePassword(
+      req.userId as string,
+      req.body.currentPassword,
+      req.body.newPassword
+    );
+    res.status(StatusCodes.OK).json(success({ message: 'Password changed' }, req.id));
   });
 }

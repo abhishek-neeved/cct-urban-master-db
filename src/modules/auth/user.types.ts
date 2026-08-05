@@ -1,4 +1,6 @@
-import type { UserRow } from './auth.model';
+import type { ServiceCategory, UserRow, UserRole } from './auth.model';
+
+export type { ServiceCategory, UserRole };
 
 /** Domain representation returned to callers — never includes the password. */
 export interface User {
@@ -6,6 +8,9 @@ export interface User {
   firstName: string;
   lastName: string;
   email: string;
+  role: UserRole;
+  serviceCategory: ServiceCategory | null;
+  phoneNumber: string | null;
   isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -14,18 +19,28 @@ export interface User {
 /** Domain user plus the password hash, for internal auth checks only. */
 export type UserWithPassword = User & { password: string };
 
-/** Input to persist a new user (password is already hashed by the service). */
+/** Input to persist a new user (password is already hashed by the service). `role` stays required here since admin-promotion and future customer-creation paths still need to set it explicitly — only self-registration (`auth.service.ts#register`) hardcodes `service_provider`. */
 export interface CreateUserInput {
   firstName: string;
   lastName: string;
   email: string;
   password: string;
+  role: Exclude<UserRole, 'admin'>;
 }
 
 /** The fields `toUser` needs — satisfied by a full `UserRow`. */
 type PublicUserRow = Pick<
   UserRow,
-  '_id' | 'firstName' | 'lastName' | 'email' | 'isVerified' | 'createdAt' | 'updatedAt'
+  | '_id'
+  | 'firstName'
+  | 'lastName'
+  | 'email'
+  | 'role'
+  | 'serviceCategory'
+  | 'phoneNumber'
+  | 'isVerified'
+  | 'createdAt'
+  | 'updatedAt'
 >;
 
 export const toUser = (row: PublicUserRow): User => ({
@@ -33,6 +48,9 @@ export const toUser = (row: PublicUserRow): User => ({
   firstName: row.firstName,
   lastName: row.lastName,
   email: row.email,
+  role: row.role,
+  serviceCategory: row.serviceCategory,
+  phoneNumber: row.phoneNumber,
   isVerified: row.isVerified,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,

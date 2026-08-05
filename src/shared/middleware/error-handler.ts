@@ -41,6 +41,13 @@ export const errorHandler = (
     return;
   }
 
-  logger.error(err instanceof Error ? err : new Error(String(err)));
+  if (err instanceof Error) {
+    logger.error(err);
+  } else {
+    // Some SDKs (e.g. razorpay) reject with a plain object, not an Error —
+    // logging it directly (not via string coercion, which collapses to
+    // "[object Object]") is the only way to see what actually went wrong.
+    logger.error('Non-Error value thrown', { err });
+  }
   res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(failure('Internal server error', req.id));
 };

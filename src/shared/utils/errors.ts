@@ -61,3 +61,9 @@ export class ConflictError extends AppError {
     super(message, StatusCodes.CONFLICT);
   }
 }
+
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Service temporarily unavailable') {
+    super(message, StatusCodes.SERVICE_UNAVAILABLE);
+  }
+}

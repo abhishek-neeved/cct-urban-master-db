@@ -46,7 +46,7 @@ describe('BaseRepository (integration, via UserRepository)', () => {
   });
 
   const make = (email: string, firstName = 'User') =>
-    repository.create({ firstName, lastName: 'Test', email, password: 'hashed-pw' });
+    repository.create({ firstName, lastName: 'Test', email, password: 'hashed-pw', role: 'customer' });
 
   describe('find', () => {
     it('returns every document when no filter is given', async () => {

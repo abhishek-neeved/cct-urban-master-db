@@ -1,16 +1,26 @@
-import { UserModel, type UserRow } from './auth.model';
+import { isValidObjectId } from 'mongoose';
+import { UserModel, type ServiceCategory, type UserRow } from './auth.model';
 import { BaseRepository } from '@shared/repositories/base.repository';
 import { CreateUserInput, User, UserWithPassword, toUser, toUserWithPassword } from './user.types';
 
+export interface UpdateUserProfileInput {
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+}
+
 export interface IUserRepository {
   findById(id: string): Promise<User | null>;
+  findByIdWithPassword(id: string): Promise<UserWithPassword | null>;
   findByEmail(email: string): Promise<User | null>;
   findByEmailWithPassword(email: string): Promise<UserWithPassword | null>;
   create(input: CreateUserInput): Promise<User>;
-  setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void>;
-  findByValidResetToken(tokenHash: string): Promise<User | null>;
   updatePassword(userId: string, passwordHash: string): Promise<void>;
+  updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null>;
+  setServiceCategory(userId: string, serviceCategory: ServiceCategory): Promise<User | null>;
   markVerified(userId: string): Promise<void>;
+  /** Onboarded service providers (serviceCategory set), optionally narrowed to one category. */
+  findServiceProviders(category?: ServiceCategory): Promise<User[]>;
 }
 
 /**
@@ -29,6 +39,12 @@ export class UserRepository
     });
   }
 
+  async findByIdWithPassword(id: string): Promise<UserWithPassword | null> {
+    if (!isValidObjectId(id)) return null;
+    const row = await UserModel.findById(id).lean<UserRow>();
+    return row ? toUserWithPassword(row) : null;
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     return this.findOne({ email: email.toLowerCase() });
   }
@@ -38,28 +54,26 @@ export class UserRepository
     return row ? toUserWithPassword(row) : null;
   }
 
-  async setPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
-    await UserModel.updateOne(
-      { _id: userId },
-      { passwordResetToken: tokenHash, passwordResetExpires: expiresAt }
-    );
-  }
-
-  async findByValidResetToken(tokenHash: string): Promise<User | null> {
-    return this.findOne({
-      passwordResetToken: tokenHash,
-      passwordResetExpires: { $gt: new Date() },
-    });
-  }
-
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    await UserModel.updateOne(
-      { _id: userId },
-      { password: passwordHash, passwordResetToken: null, passwordResetExpires: null }
-    );
+    await UserModel.updateOne({ _id: userId }, { password: passwordHash });
   }
 
   async markVerified(userId: string): Promise<void> {
     await UserModel.updateOne({ _id: userId }, { isVerified: true });
+  }
+
+  async updateProfile(userId: string, input: UpdateUserProfileInput): Promise<User | null> {
+    return this.updateById(userId, input);
+  }
+
+  async setServiceCategory(userId: string, serviceCategory: ServiceCategory): Promise<User | null> {
+    return this.updateById(userId, { serviceCategory });
+  }
+
+  async findServiceProviders(category?: ServiceCategory): Promise<User[]> {
+    return this.find({
+      role: 'service_provider',
+      serviceCategory: category ?? { $ne: null },
+    });
   }
 }

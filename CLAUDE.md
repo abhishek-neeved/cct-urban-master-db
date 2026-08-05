@@ -12,10 +12,25 @@ validation, Winston logging, and Vitest tests. The project is **native ESM**
 (`"type": "module"`, `moduleResolution: bundler`). Full docs live in
 [`docs/`](./docs/README.md).
 
-The current API surface is the **auth** module (`/api/auth/*`): register,
-verify-otp, resend-otp, login, refresh, logout, forgot-password,
-verify-forgot-password-token, reset-password. See
-[`docs/api-reference.md`](./docs/api-reference.md).
+The current API surface spans eight modules — `auth` (`/api/auth/*`:
+register, verify-otp, resend-otp, login, refresh, logout, forgot-password,
+reset-password, change-password — forgot/reset-password are OTP-based, not
+link/token-based; change-password is authenticated and verifies the current
+password instead), `users`
+(`/api/users/*`, including the one-time `PATCH /me/service-category` for a
+service_provider),
+`uploads` (`/api/uploads/*`, presigned S3 URLs), `kyc` (`/api/kyc/*` +
+`/api/admin/kyc/*`), `criminal-record` (`/api/criminal-record/*` +
+`/api/admin/criminal-record/*`), `onboarding-fee` (`/api/onboarding-fee/*`,
+a one-time ₹10 Razorpay Payment Link payment — no plans, no recurring
+billing), `dashboard` (`/api/dashboard/*`, a read-only
+composition over the others), and `service-providers`
+(`/api/service-providers`, the customer-facing directory of KYC-verified
+providers). Authorization beyond "authenticated or not" is enforced by CASL
+abilities (`@shared/authorization/ability.ts` + the `requireAbility`
+middleware) — kyc/criminal-record/onboarding-fee are `service_provider`-only,
+the directory is `customer`/`admin`-only, and `admin` can manage everything.
+See [`docs/api-reference.md`](./docs/api-reference.md).
 
 ## Architecture (respect the layering)
 
