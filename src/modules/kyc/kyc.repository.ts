@@ -7,12 +7,23 @@ import {
   toAdminKycRecord,
   toKycRecord,
 } from './kyc.types';
+import type { MobileToPanResult } from '@shared/services/mobile-verification.service';
 
 export interface IKycRepository {
   findByUserId(userId: string): Promise<KycRecord | null>;
   findRowByUserId(userId: string): Promise<KycRow | null>;
-  /** Upsert just the mobile number + its verified flag — creates the row on first call. */
-  setMobileVerified(userId: string, mobileNumber: string): Promise<KycRecord>;
+  /**
+   * Upsert the mobile number + its verified flag + the mobile-to-pan lookup
+   * fetched for it — creates the row on first call. Resets
+   * `aadhaarVerified`/`panVerified` to `false`, since a (re-)verified mobile
+   * number invalidates any prior Aadhaar/PAN check made against a different
+   * number's lookup.
+   */
+  setMobileVerified(
+    userId: string,
+    mobileNumber: string,
+    lookup: MobileToPanResult
+  ): Promise<KycRecord>;
   /** Upsert just the Aadhaar number + its verified flag. */
   setAadhaarVerified(userId: string, aadharNumber: string): Promise<KycRecord>;
   /** Upsert just the PAN number + its verified flag. */
@@ -48,11 +59,24 @@ export class KycRepository
     return KycModel.findOne({ userId }).lean<KycRow>();
   }
 
-  async setMobileVerified(userId: string, mobileNumber: string): Promise<KycRecord> {
+  async setMobileVerified(
+    userId: string,
+    mobileNumber: string,
+    lookup: MobileToPanResult
+  ): Promise<KycRecord> {
     const row = await KycModel.findOneAndUpdate(
       { userId },
       {
-        $set: { mobileNumber, mobileVerified: true },
+        $set: {
+          mobileNumber,
+          mobileVerified: true,
+          mobileLookup: lookup,
+          // A (re-)verified mobile number invalidates any prior Aadhaar/PAN
+          // check — those were made against a possibly different number's
+          // lookup, which no longer applies.
+          aadhaarVerified: false,
+          panVerified: false,
+        },
         $setOnInsert: { status: 'not_started' },
       },
       { new: true, upsert: true }
@@ -83,10 +107,12 @@ export class KycRepository
       { userId },
       {
         ...input,
-        status: 'pending',
+        // Mobile/Aadhaar/PAN are already verified against real data before
+        // submit() is ever reachable (see KycService.submit) — there is
+        // nothing left for a human reviewer to check, so this goes straight
+        // to verified rather than waiting in an admin-review queue.
+        status: 'verified',
         submittedAt: new Date(),
-        // A resubmission re-enters the review queue clean — any previous
-        // rejection/approval trail is cleared rather than left stale.
         rejectionReason: null,
         reviewedBy: null,
         reviewedAt: null,

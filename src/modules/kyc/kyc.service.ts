@@ -2,7 +2,10 @@ import type { IKycRepository } from './kyc.repository';
 import type { IKycOtpRepository } from './kyc-otp.repository';
 import { AdminKycRecord, KycRecord, NOT_STARTED_KYC_RECORD, SubmitKycInput } from './kyc.types';
 import type { KycStatus } from './kyc.model';
-import type { IMobileVerificationProvider } from '@shared/services/mobile-verification.service';
+import type {
+  IMobileVerificationProvider,
+  MobileToPanResult,
+} from '@shared/services/mobile-verification.service';
 import { env, isProduction } from '@config/env';
 import { OTP_MAX_ATTEMPTS } from '@config/constants';
 import { generateNumericOtp, hashToken } from '@utils/token.util';
@@ -27,11 +30,16 @@ export interface RequestMobileVerificationResult {
  * calling CoinCircleTrust's mobile-to-pan lookup for the *already-verified*
  * mobile number and comparing its result against what the user typed. No
  * full identity data is persisted — only the pass/fail outcome for each
- * field, on the same `Kyc` document the eventual submission uses. The
- * state machine has exactly one loop-back edge: pending -> verified,
- * pending -> rejected, rejected -> not_started-with-fields-intact (a
- * resubmission just calls `submit()` again). Verified is terminal — there's
- * no un-verify today.
+ * field, on the same `Kyc` document the eventual submission uses.
+ *
+ * `submit()` requires all three `*Verified` flags and goes straight to
+ * `verified` — every field was already checked against real third-party
+ * data, so there is nothing left for a human reviewer to confirm. There is
+ * no `pending` state in this flow; it only exists as a historical status
+ * value the `listForReview`/`approve`/`reject` admin methods still support,
+ * kept for a possible future manual-re-review path (e.g. flagging a
+ * verified user back for a second look) rather than active use today.
+ * Verified is terminal — there's no un-verify today.
  */
 export class KycService {
   constructor(
@@ -71,7 +79,12 @@ export class KycService {
       throw invalid;
     }
 
-    const record = await this.kyc.setMobileVerified(userId, otp.mobileNumber);
+    // Fetched exactly once here, not re-fetched by verifyAadhaar/verifyPan —
+    // this is a real, billed API call, so caching it on the row (read back
+    // in requireMobileLookup) is a direct cost optimization, not just a
+    // performance one.
+    const lookup = await this.mobileVerificationProvider.lookupByMobileNumber(otp.mobileNumber);
+    const record = await this.kyc.setMobileVerified(userId, otp.mobileNumber, lookup);
     await this.otps.deleteForUser(userId);
     logger.info('Mobile number verified', { userId });
     return record;
@@ -79,13 +92,11 @@ export class KycService {
 
   /**
    * Verifies an Aadhaar number by comparing its last 4 digits against the
-   * `masked_aadhaar` CoinCircleTrust's mobile-to-pan API returns for the
-   * user's already-verified mobile number — that field is the only part of
-   * the real Aadhaar number the API ever discloses.
+   * `masked_aadhaar` from the cached mobile-to-pan lookup — that field is
+   * the only part of the real Aadhaar number the API ever discloses.
    */
   async verifyAadhaar(userId: string, aadharNumber: string): Promise<KycRecord> {
-    const mobileNumber = await this.requireVerifiedMobileNumber(userId);
-    const lookup = await this.mobileVerificationProvider.lookupByMobileNumber(mobileNumber);
+    const lookup = await this.requireMobileLookup(userId);
 
     const expectedLastDigits = lookup.masked_aadhaar.slice(-AADHAAR_LAST_DIGITS);
     const actualLastDigits = aadharNumber.slice(-AADHAAR_LAST_DIGITS);
@@ -101,12 +112,11 @@ export class KycService {
   }
 
   /**
-   * Verifies a PAN by comparing it against the `pan_number` CoinCircleTrust's
-   * mobile-to-pan API returns for the user's already-verified mobile number.
+   * Verifies a PAN by comparing it against the `pan_number` from the cached
+   * mobile-to-pan lookup.
    */
   async verifyPan(userId: string, panNumber: string): Promise<KycRecord> {
-    const mobileNumber = await this.requireVerifiedMobileNumber(userId);
-    const lookup = await this.mobileVerificationProvider.lookupByMobileNumber(mobileNumber);
+    const lookup = await this.requireMobileLookup(userId);
 
     if (lookup.pan_number.toUpperCase() !== panNumber.toUpperCase()) {
       throw new BadRequestError('This PAN does not match the one linked to your mobile number');
@@ -121,9 +131,6 @@ export class KycService {
     const existing = await this.kyc.findByUserId(userId);
     if (existing?.status === 'verified') {
       throw new BadRequestError('Your identity is already verified — no resubmission is needed');
-    }
-    if (existing?.status === 'pending') {
-      throw new BadRequestError('Your submission is already pending review');
     }
     if (!existing?.mobileVerified) {
       throw new BadRequestError('Verify your mobile number before submitting');
@@ -170,11 +177,11 @@ export class KycService {
     return updated as AdminKycRecord;
   }
 
-  private async requireVerifiedMobileNumber(userId: string): Promise<string> {
-    const existing = await this.kyc.findByUserId(userId);
-    if (!existing?.mobileVerified || !existing.mobileNumber) {
+  private async requireMobileLookup(userId: string): Promise<MobileToPanResult> {
+    const row = await this.kyc.findRowByUserId(userId);
+    if (!row?.mobileVerified || !row.mobileLookup) {
       throw new BadRequestError('Verify your mobile number before verifying Aadhaar or PAN');
     }
-    return existing.mobileNumber;
+    return row.mobileLookup as unknown as MobileToPanResult;
   }
 }

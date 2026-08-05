@@ -15,7 +15,10 @@ export interface KycRecord {
   aadhaarVerified: boolean;
   panNumber?: string;
   panVerified: boolean;
-  address?: string;
+  addressLine?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
   submittedAt?: Date;
   rejectionReason?: string;
 }
@@ -29,7 +32,10 @@ export interface AdminKycRecord extends KycRecord {
 }
 
 export interface SubmitKycInput {
-  address: string;
+  addressLine: string;
+  city: string;
+  state: string;
+  pincode: string;
 }
 
 /** The "not started" state has no document — this is the domain default `getStatus` returns before the first Verify call creates the row. */
@@ -48,7 +54,10 @@ export const toKycRecord = (row: KycRow): KycRecord => ({
   aadhaarVerified: row.aadhaarVerified,
   panNumber: row.panNumber ?? undefined,
   panVerified: row.panVerified,
-  address: row.address ?? undefined,
+  addressLine: row.addressLine ?? undefined,
+  city: row.city ?? undefined,
+  state: row.state ?? undefined,
+  pincode: row.pincode ?? undefined,
   submittedAt: row.submittedAt ?? undefined,
   rejectionReason: row.rejectionReason ?? undefined,
 });

@@ -8,11 +8,16 @@ export type KycStatus = 'not_started' | 'pending' | 'verified' | 'rejected';
  * per user (`userId` is unique), created incrementally: mobile number
  * verification (OTP) comes first and gates Aadhaar/PAN verification;
  * Aadhaar/PAN are each verified by comparing the user-entered number against
- * CoinCircleTrust's mobile-to-pan lookup for the already-verified mobile
- * number, not by a separate OTP per document. `status` stays `not_started`
- * (the row already exists, but nothing has been submitted for review yet)
- * until `submit()` requires all three `*Verified` flags true and flips it
- * to `pending`.
+ * `mobileLookup` — CoinCircleTrust's mobile-to-pan response for the
+ * verified mobile number, fetched and cached exactly once when the mobile
+ * OTP confirms (see `KycService.confirmMobileOtp`), not re-fetched by each
+ * of Aadhaar/PAN's own verify calls. That's a real, billed API call, so
+ * caching it here is a direct cost optimization, not just a performance one.
+ * Re-verifying a different mobile number replaces `mobileLookup` and resets
+ * `aadhaarVerified`/`panVerified` to `false` — they were checked against
+ * the old number's identity and no longer apply. `status` stays
+ * `not_started` (the row already exists, but nothing has been submitted for
+ * review yet) until `submit()` requires all three `*Verified` flags true.
  */
 export interface KycRow {
   _id: Types.ObjectId;
@@ -20,11 +25,16 @@ export interface KycRow {
   status: KycStatus;
   mobileNumber: string | null;
   mobileVerified: boolean;
+  /** CoinCircleTrust's mobile-to-pan response for `mobileNumber`, cached verbatim (snake_case, as received) — see `MobileToPanResult`. */
+  mobileLookup: Record<string, unknown> | null;
   aadharNumber: string | null;
   aadhaarVerified: boolean;
   panNumber: string | null;
   panVerified: boolean;
-  address: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
   submittedAt: Date | null;
   rejectionReason: string | null;
   reviewedBy: Types.ObjectId | null;
@@ -43,11 +53,15 @@ const kycSchema = new Schema(
     },
     mobileNumber: { type: String, default: null },
     mobileVerified: { type: Boolean, required: true, default: false },
+    mobileLookup: { type: Schema.Types.Mixed, default: null },
     aadharNumber: { type: String, default: null },
     aadhaarVerified: { type: Boolean, required: true, default: false },
     panNumber: { type: String, default: null },
     panVerified: { type: Boolean, required: true, default: false },
-    address: { type: String, default: null },
+    addressLine: { type: String, default: null },
+    city: { type: String, default: null },
+    state: { type: String, default: null },
+    pincode: { type: String, default: null },
     submittedAt: { type: Date, default: null },
     rejectionReason: { type: String, default: null },
     reviewedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },

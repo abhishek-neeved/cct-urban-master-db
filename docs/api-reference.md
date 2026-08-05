@@ -431,33 +431,47 @@ curl "http://localhost:3000/api/uploads/view?key=kyc-aadhar/<userId>/<uuid>" \
 
 ## KYC
 
-Identity verification built up incrementally, then submitted for admin
-review. No document uploads, no full identity data stored — only the
-pass/fail outcome for each field:
+Identity verification built up incrementally, then submitted. No document
+uploads, no full identity data stored — only the pass/fail outcome for each
+field:
 
 ```
                         ┌─ verify-mobile/* ─▶ mobileVerified
-not_started (row exists ├─ verify-aadhaar ──▶ aadhaarVerified  ──submit──▶ pending ──approve──▶ verified (terminal)
- once mobile verifies)  └─ verify-pan ──────▶ panVerified                     ▲          │
-                                                                              └─reject───┘
+not_started (row exists ├─ verify-aadhaar ──▶ aadhaarVerified  ──submit──▶ verified (terminal)
+ once mobile verifies)  └─ verify-pan ──────▶ panVerified
 ```
 
 Verification order is enforced: **mobile number first** (proven by OTP — the
-only OTP round-trip in this flow), then Aadhaar/PAN, each proven by calling
-CoinCircleTrust's mobile-to-pan lookup for the *already-verified* mobile
-number and comparing its result against what the user typed:
+only OTP round-trip in this flow), then Aadhaar/PAN, each proven by comparing
+what the user typed against CoinCircleTrust's mobile-to-pan lookup for the
+already-verified mobile number:
 
 - **Aadhaar** — compares only the **last 4 digits** against the lookup's
   `masked_aadhaar`, since that's the only part of the real number the API
   ever discloses.
 - **PAN** — compares the full value against the lookup's `pan_number`.
 
+> **The mobile-to-pan lookup is a real, billed call — fetched once, not
+> per-check.** It runs exactly once, when `POST /verify-mobile/confirm`
+> succeeds, and its result is cached on the KYC row for both `verify-aadhaar`
+> and `verify-pan` to read — neither triggers its own API call. Re-verifying
+> a *different* mobile number replaces the cached lookup and resets
+> `aadhaarVerified`/`panVerified` back to `false`, since they were checked
+> against the old number's identity and no longer apply; the user must
+> re-verify both Aadhaar and PAN against the new number.
+
+`POST /api/kyc/submit` requires all three `*Verified` flags and goes straight
+to `verified` — every field was already checked against real third-party
+data via the steps above, so there's nothing left for a human to review.
+(There is no `pending` state in this flow; a small set of admin-only
+`/api/admin/kyc/*` endpoints still exist for a possible future manual
+re-review path, but nothing in the normal flow produces a `pending` row for
+them to act on today.)
+
 `GET /api/kyc/me` returns `{"status":"not_started", "mobileVerified":false,
 "aadhaarVerified":false, "panVerified":false}` both when no row exists yet
 *and* right up until mobile verification succeeds and creates one — from the
-client's perspective there's no visible difference. A rejection can always be
-resubmitted (clearing the previous `rejectionReason` and re-entering the
-queue as `pending`, verification flags untouched); `verified` is terminal —
+client's perspective there's no visible difference. `verified` is terminal —
 there is no un-verify today.
 
 ### `GET /api/kyc/me`
@@ -548,16 +562,18 @@ already-verified mobile number.
 
 ### `POST /api/kyc/submit`
 
-Submit (or resubmit, after a rejection) KYC for review. Requires
-`mobileVerified`, `aadhaarVerified`, and `panVerified` to already be `true`.
+Submit KYC. Requires `mobileVerified`, `aadhaarVerified`, and `panVerified`
+to already be `true` — since all three were checked against real
+third-party data by the verify steps above, this goes straight to
+`verified` rather than an admin-review queue.
 
 **Headers:** `Authorization: Bearer <accessToken>` (or the `accessToken` cookie)
 
-**Body:** `address` (required, non-empty)
+**Body:** `addressLine` (required, non-empty), `city` (required, non-empty), `state` (required, non-empty), `pincode` (required, exactly 6 digits)
 
-**200** → the updated record, `status: "pending"`
+**200** → the updated record, `status: "verified"`
 
-**Errors:** `400` already verified, already pending review, or mobile/Aadhaar/PAN not yet verified · `401` missing/invalid access token · `422` invalid body
+**Errors:** `400` already verified, or mobile/Aadhaar/PAN not yet verified · `401` missing/invalid access token · `422` invalid body
 
 ```bash
 # 1. Verify mobile
@@ -579,10 +595,15 @@ curl -X POST http://localhost:3000/api/kyc/verify-pan \
 # 3. Submit
 curl -X POST http://localhost:3000/api/kyc/submit \
   -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
-  -d '{"address":"221B Baker Street"}'
+  -d '{"addressLine":"221B Baker Street","city":"Mumbai","state":"Maharashtra","pincode":"400001"}'
 ```
 
 ### Admin review
+
+> **Not part of the normal flow today.** `submit()` goes straight to
+> `verified`, so nothing produces a `pending` row for these endpoints to act
+> on. They're kept for a possible future manual re-review path (e.g.
+> flagging a verified user back for a second look), not actively used yet.
 
 Everything below requires **both** a valid access token **and** the caller's
 `role` being `admin` (see the Users section above — roles are looked up fresh

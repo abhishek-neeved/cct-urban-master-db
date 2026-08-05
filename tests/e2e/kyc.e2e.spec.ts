@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 import { Application } from 'express';
 import { createApp } from '@/app';
 import { UserModel } from '@modules/auth/auth.model';
+import { KycModel } from '@modules/kyc/kyc.model';
 import { connectTestDb, clearTestDb, closeTestDb } from '../helpers/db';
 
 /**
@@ -26,6 +27,14 @@ const LOOKUP = {
   full_name: 'Test User',
   masked_aadhaar: 'XXXXXXXX9012',
   address: { full: '221B Baker Street' },
+};
+
+/** Valid KYC submission body — addressLine/city/state/pincode, all required. */
+const VALID_SUBMISSION = {
+  addressLine: '221B Baker Street',
+  city: 'Mumbai',
+  state: 'Maharashtra',
+  pincode: '400001',
 };
 
 describe('KYC API (e2e)', () => {
@@ -100,6 +109,33 @@ describe('KYC API (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ panNumber: LOOKUP.pan_number })
       .expect(200);
+  };
+
+  /**
+   * Seeds a `pending` submission for the admin-review tests below. Nothing
+   * in the normal user flow produces `pending` anymore — `/api/kyc/submit`
+   * goes straight to `verified` (mobile/Aadhaar/PAN are already checked
+   * against real third-party data by the time it's callable) — so this
+   * drives a real submission through the API first (to get a genuine,
+   * fully-fielded `verified` row) and then downgrades its status directly
+   * via the model, the same direct-model-write pattern `registerAdmin`
+   * above uses for `role`. `pending` remains a valid `KycStatus` purely for
+   * the `listForReview`/`approve`/`reject` admin methods, kept for a
+   * possible future manual-re-review path.
+   */
+  const seedPendingSubmission = async (
+    email: string
+  ): Promise<{ accessToken: string; userId: string }> => {
+    const accessToken = await registerAndLogin(email);
+    await verifyEverything(accessToken);
+    await request(app)
+      .post('/api/kyc/submit')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(VALID_SUBMISSION);
+    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
+    const userId = me.body.data.user.id as string;
+    await KycModel.findOneAndUpdate({ userId }, { status: 'pending' });
+    return { accessToken, userId };
   };
 
   describe('GET /api/kyc/me', () => {
@@ -192,6 +228,55 @@ describe('KYC API (e2e)', () => {
       expect(res.status).toBe(422);
     });
 
+    it('surfaces a 503 when the mobile-verification API is unreachable', async () => {
+      // confirmMobileOtp is the only KYC endpoint that still calls the
+      // provider directly (see KycService.confirmMobileOtp) — verify-aadhaar
+      // and verify-pan now read the cached lookup instead, so this is the
+      // only place left to exercise HttpMobileVerificationProvider's 503
+      // path against the real code.
+      const accessToken = await registerAndLogin('verify2e@example.com');
+      const requestRes = await request(app)
+        .post('/api/kyc/verify-mobile/request')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ mobileNumber: MOBILE_NUMBER });
+      fetchMock.mockRejectedValue(new Error('network down'));
+
+      const res = await request(app)
+        .post('/api/kyc/verify-mobile/confirm')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ otp: requestRes.body.data.devOtp });
+
+      expect(res.status).toBe(503);
+    });
+
+    it('resets a previously-verified Aadhaar/PAN when the mobile number is re-verified', async () => {
+      // The old Aadhaar/PAN checks were made against the previous mobile
+      // number's cached lookup — re-confirming mobile OTP (even for the same
+      // number) refreshes that cache and invalidates them (see
+      // KycRepository.setMobileVerified).
+      const accessToken = await registerAndLogin('verify2f@example.com');
+      await verifyMobile(accessToken);
+      await request(app)
+        .post('/api/kyc/verify-aadhaar')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ aadharNumber: `00000000${LOOKUP.masked_aadhaar.slice(-4)}` })
+        .expect(200);
+      await request(app)
+        .post('/api/kyc/verify-pan')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ panNumber: LOOKUP.pan_number })
+        .expect(200);
+
+      await verifyMobile(accessToken);
+
+      const me = await request(app)
+        .get('/api/kyc/me')
+        .set('Authorization', `Bearer ${accessToken}`);
+      expect(me.body.data.mobileVerified).toBe(true);
+      expect(me.body.data.aadhaarVerified).toBe(false);
+      expect(me.body.data.panVerified).toBe(false);
+    });
+
     it('rejects verification requests from a customer with 403', async () => {
       const accessToken = await registerAsCustomer('verify2d@example.com');
 
@@ -223,6 +308,11 @@ describe('KYC API (e2e)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.aadhaarVerified).toBe(true);
+      // Cost-optimization: the mobile-to-pan lookup was already fetched once
+      // by /verify-mobile/confirm (inside verifyMobile above) and is read
+      // back from the cached row here — verify-aadhaar itself never calls
+      // the provider, so fetch is called exactly the one time from confirm.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
@@ -265,19 +355,6 @@ describe('KYC API (e2e)', () => {
         .send({ aadharNumber: '123' });
 
       expect(res.status).toBe(422);
-    });
-
-    it('surfaces a 503 when the mobile-verification API is unreachable', async () => {
-      const accessToken = await registerAndLogin('verify6b@example.com');
-      await verifyMobile(accessToken);
-      fetchMock.mockRejectedValue(new Error('network down'));
-
-      const res = await request(app)
-        .post('/api/kyc/verify-aadhaar')
-        .set('Authorization', `Bearer ${accessToken}`)
-        .send({ aadharNumber: `00000000${LOOKUP.masked_aadhaar.slice(-4)}` });
-
-      expect(res.status).toBe(503);
     });
 
     it('rejects verification from a customer with 403', async () => {
@@ -354,23 +431,26 @@ describe('KYC API (e2e)', () => {
   });
 
   describe('POST /api/kyc/submit', () => {
-    it('submits and moves status to pending once mobile/Aadhaar/PAN are all verified', async () => {
+    it('submits and moves status to verified once mobile/Aadhaar/PAN are all verified', async () => {
       const accessToken = await registerAndLogin('user2@example.com');
       await verifyEverything(accessToken);
 
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(res.status).toBe(200);
-      expect(res.body.data.status).toBe('pending');
-      expect(res.body.data.address).toBe('221B Baker Street');
+      expect(res.body.data.status).toBe('verified');
+      expect(res.body.data.addressLine).toBe(VALID_SUBMISSION.addressLine);
+      expect(res.body.data.city).toBe(VALID_SUBMISSION.city);
+      expect(res.body.data.state).toBe(VALID_SUBMISSION.state);
+      expect(res.body.data.pincode).toBe(VALID_SUBMISSION.pincode);
 
       const me = await request(app)
         .get('/api/kyc/me')
         .set('Authorization', `Bearer ${accessToken}`);
-      expect(me.body.data.status).toBe('pending');
+      expect(me.body.data.status).toBe('verified');
     });
 
     it('rejects submission before verifying mobile/Aadhaar/PAN, with 400', async () => {
@@ -379,7 +459,7 @@ describe('KYC API (e2e)', () => {
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(res.status).toBe(400);
     });
@@ -391,41 +471,77 @@ describe('KYC API (e2e)', () => {
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(res.status).toBe(400);
     });
 
-    it('rejects a missing address with 422', async () => {
+    it('rejects a missing addressLine with 422', async () => {
       const accessToken = await registerAndLogin('user3@example.com');
       await verifyEverything(accessToken);
 
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '' });
+        .send({ ...VALID_SUBMISSION, addressLine: '' });
 
       expect(res.status).toBe(422);
     });
 
-    it('rejects a second submission while the first is still pending, with 400', async () => {
+    it('rejects a missing city with 422', async () => {
+      const accessToken = await registerAndLogin('user3b@example.com');
+      await verifyEverything(accessToken);
+
+      const res = await request(app)
+        .post('/api/kyc/submit')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...VALID_SUBMISSION, city: '' });
+
+      expect(res.status).toBe(422);
+    });
+
+    it('rejects a missing state with 422', async () => {
+      const accessToken = await registerAndLogin('user3c@example.com');
+      await verifyEverything(accessToken);
+
+      const res = await request(app)
+        .post('/api/kyc/submit')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...VALID_SUBMISSION, state: '' });
+
+      expect(res.status).toBe(422);
+    });
+
+    it('rejects a pincode that is not exactly 6 digits, with 422', async () => {
+      const accessToken = await registerAndLogin('user3d@example.com');
+      await verifyEverything(accessToken);
+
+      const res = await request(app)
+        .post('/api/kyc/submit')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ ...VALID_SUBMISSION, pincode: '12345' });
+
+      expect(res.status).toBe(422);
+    });
+
+    it('rejects a second submission once the first is already verified, with 400', async () => {
       const accessToken = await registerAndLogin('user5@example.com');
       await verifyEverything(accessToken);
       await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(res.status).toBe(400);
     });
 
     it('rejects without a valid access token', async () => {
-      await request(app).post('/api/kyc/submit').send({ address: '221B Baker Street' }).expect(401);
+      await request(app).post('/api/kyc/submit').send(VALID_SUBMISSION).expect(401);
     });
 
     it('rejects a customer with 403', async () => {
@@ -434,7 +550,7 @@ describe('KYC API (e2e)', () => {
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(res.status).toBe(403);
     });
@@ -442,12 +558,7 @@ describe('KYC API (e2e)', () => {
 
   describe('Admin review', () => {
     it('lists pending submissions for an admin', async () => {
-      const userToken = await registerAndLogin('user6@example.com');
-      await verifyEverything(userToken);
-      await request(app)
-        .post('/api/kyc/submit')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+      await seedPendingSubmission('user6@example.com');
       const adminToken = await registerAdmin('admin1@example.com');
 
       const res = await request(app)
@@ -488,14 +599,7 @@ describe('KYC API (e2e)', () => {
     });
 
     it('approves a pending submission', async () => {
-      const userToken = await registerAndLogin('user8@example.com');
-      await verifyEverything(userToken);
-      const submitRes = await request(app)
-        .post('/api/kyc/submit')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
-      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
-      const userId = me.body.data.user.id;
+      const { accessToken: userToken, userId } = await seedPendingSubmission('user8@example.com');
       const adminToken = await registerAdmin('admin2@example.com');
 
       const res = await request(app)
@@ -504,7 +608,6 @@ describe('KYC API (e2e)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe('verified');
-      expect(submitRes.body.data.status).toBe('pending');
 
       const statusAfter = await request(app)
         .get('/api/kyc/me')
@@ -513,14 +616,7 @@ describe('KYC API (e2e)', () => {
     });
 
     it('rejects a pending submission with a reason', async () => {
-      const userToken = await registerAndLogin('user9@example.com');
-      await verifyEverything(userToken);
-      await request(app)
-        .post('/api/kyc/submit')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
-      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
-      const userId = me.body.data.user.id;
+      const { accessToken: userToken, userId } = await seedPendingSubmission('user9@example.com');
       const adminToken = await registerAdmin('admin3@example.com');
 
       const res = await request(app)
@@ -545,7 +641,7 @@ describe('KYC API (e2e)', () => {
       await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
       const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
       const userId = me.body.data.user.id;
       const adminToken = await registerAdmin('admin4@example.com');
@@ -559,14 +655,7 @@ describe('KYC API (e2e)', () => {
     });
 
     it('allows resubmission after rejection, clearing the rejection reason', async () => {
-      const userToken = await registerAndLogin('user11@example.com');
-      await verifyEverything(userToken);
-      await request(app)
-        .post('/api/kyc/submit')
-        .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
-      const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
-      const userId = me.body.data.user.id;
+      const { accessToken: userToken, userId } = await seedPendingSubmission('user11@example.com');
       const adminToken = await registerAdmin('admin5@example.com');
       await request(app)
         .patch(`/api/admin/kyc/${userId}/reject`)
@@ -576,10 +665,10 @@ describe('KYC API (e2e)', () => {
       const resubmit = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(resubmit.status).toBe(200);
-      expect(resubmit.body.data.status).toBe('pending');
+      expect(resubmit.body.data.status).toBe('verified');
       expect(resubmit.body.data.rejectionReason).toBeUndefined();
     });
 
@@ -589,7 +678,7 @@ describe('KYC API (e2e)', () => {
       await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
       const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
       const userId = me.body.data.user.id;
       const adminToken = await registerAdmin('admin5b@example.com');
@@ -600,7 +689,7 @@ describe('KYC API (e2e)', () => {
       const res = await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
 
       expect(res.status).toBe(400);
     });
@@ -611,7 +700,7 @@ describe('KYC API (e2e)', () => {
       await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
       const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
       const userId = me.body.data.user.id;
       const adminToken = await registerAdmin('admin6@example.com');
@@ -645,7 +734,7 @@ describe('KYC API (e2e)', () => {
       await request(app)
         .post('/api/kyc/submit')
         .set('Authorization', `Bearer ${userToken}`)
-        .send({ address: '221B Baker Street' });
+        .send(VALID_SUBMISSION);
       const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${userToken}`);
       const userId = me.body.data.user.id;
 

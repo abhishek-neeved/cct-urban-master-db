@@ -115,7 +115,12 @@ describe('KycController', () => {
     const req = {
       id: 'req-1',
       userId: 'u1',
-      body: { address: '221B Baker Street' },
+      body: {
+        addressLine: '221B Baker Street',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        pincode: '400001',
+      },
     } as unknown as Request;
 
     controller.submit(req, res, next);

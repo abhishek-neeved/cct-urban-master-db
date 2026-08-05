@@ -100,7 +100,12 @@ describe('Service Providers directory API (e2e)', () => {
     await request(app)
       .post('/api/kyc/submit')
       .set('Authorization', `Bearer ${providerToken}`)
-      .send({ address: '221B Baker Street' });
+      .send({
+        addressLine: '221B Baker Street',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        pincode: '400001',
+      });
     const me = await request(app)
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${providerToken}`);

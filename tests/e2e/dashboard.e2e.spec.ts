@@ -125,7 +125,12 @@ describe('Dashboard API (e2e)', () => {
     await request(app)
       .post('/api/kyc/submit')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ address: '221B Baker Street' });
+      .send({
+        addressLine: '221B Baker Street',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        pincode: '400001',
+      });
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${accessToken}`);
     const userId = me.body.data.user.id;
     await UserModel.updateOne({ email: 'dash2@example.com' }, { role: 'admin' });

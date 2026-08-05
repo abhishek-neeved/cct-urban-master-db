@@ -6,6 +6,7 @@ const AADHAR_PATTERN = /^\d{12}$/;
 const PAN_PATTERN = /^[A-Z]{5}\d{4}[A-Z]$/;
 const MOBILE_PATTERN = /^[6-9]\d{9}$/;
 const OTP_PATTERN = /^\d{6}$/;
+const PINCODE_PATTERN = /^\d{6}$/;
 
 export const requestMobileVerificationSchema = z.object({
   mobileNumber: z.string().regex(MOBILE_PATTERN, 'Enter a valid 10-digit mobile number'),
@@ -24,7 +25,10 @@ export const verifyPanSchema = z.object({
 });
 
 export const submitKycSchema = z.object({
-  address: z.string().min(1, 'Address is required'),
+  addressLine: z.string().min(1, 'Address is required'),
+  city: z.string().min(1, 'City is required'),
+  state: z.string().min(1, 'State is required'),
+  pincode: z.string().regex(PINCODE_PATTERN, 'Pincode must be exactly 6 digits'),
 });
 
 export const listForReviewQuerySchema = z.object({
