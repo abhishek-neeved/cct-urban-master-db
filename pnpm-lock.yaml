@@ -15,8 +15,8 @@ importers:
         specifier: 3.1097.0
         version: 3.1097.0
       '@casl/ability':
-        specifier: 7.0.1
-        version: 7.0.1
+        specifier: 7.0.2
+        version: 7.0.2
       bcryptjs:
         specifier: 3.0.3
         version: 3.0.3
@@ -168,6 +168,9 @@ packages:
   '@aws-sdk/core@3.977.2':
     resolution: {integrity: sha512-8sT/M5vDcagx5/iM0Bfx7f6i3mfVOQkA34+GTMwp0lIWZb6ma+bjkzDS/r9yqU2yTPBqqMBFPT3+d9kUuuNDJA==}
     engines: {node: '>=20.0.0'}
+    deprecated: |-
+      Deprecated due to Document number parsing bug in JSON, see
+        https://github.com/aws/aws-sdk-js-v3/issues/8246. Newer version available.
 
   '@aws-sdk/credential-provider-env@3.972.63':
     resolution: {integrity: sha512-VSS9dftt7r7GiZ4gs8z0PNaMLVAaSj/MXVr6WQBtsrQQB9miJo7I6lQuJND1/ugFwK9x7OHCYZDkLSYh0FIZtA==}
@@ -254,8 +257,8 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@casl/ability@7.0.1':
-    resolution: {integrity: sha512-krOW1zQGEie5lH6fpryrcsPvc5r2pe5Vn5xbthuzc5X9gwzHIyZgGGgw9dMoSLHXdjB4BIVxGG/HBkG+1NuyZQ==}
+  '@casl/ability@7.0.2':
+    resolution: {integrity: sha512-NOYbLTaw080a1Na4CpBtyGpL+i9NZhtGGt/tPrrNpLEv8EawFusHZCgc58ewyPBiZ0NER0iudB0et+IP8xJbLg==}
 
   '@colors/colors@1.6.0':
     resolution: {integrity: sha512-Ir+AOibqzrIsL6ajt3Rz3LskB7OiMVHqltZmspbW/TJuTVuyOMirVqAkjfY6JISiLHgyNqicAC8AyHHGzNd/dA==}
@@ -3217,7 +3220,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@casl/ability@7.0.1':
+  '@casl/ability@7.0.2':
     dependencies:
       '@ucast/mongo2js': 2.0.0
 
